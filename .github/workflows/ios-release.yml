@@ -23,7 +23,13 @@
 #   IOS_UPLOAD_LISTING       name, subtitle, privacy URL, description, keywords,
 #                            promotional text, marketing/support URLs
 #   IOS_UPLOAD_WHATS_NEW     What's New text
-#   IOS_UPLOAD_SCREENSHOTS   iPhone 6.7" and iPad 12.9" screenshots
+#   IOS_UPLOAD_SCREENSHOTS   iPhone 6.7" and iPad 12.9" screenshots, plus iPhone Duo
+#                            and Apple Watch sets when their folders hold PNGs,
+#                            uploaded as RGB copies (no alpha channel)
+#   IOS_UPLOAD_CREATIVE_ASSETS  product page header and search results images
+#                            (store/creative/ios): uploaded to the Asset Library
+#                            once, reviewed in a submission of their own, placed
+#                            on the version once Apple approves them
 #   IOS_SUBMIT_REVIEW        select THIS run's processed build, submit for review
 #                            (needs IOS_UPLOAD_BUILD; never uses an older build)
 #   IOS_PUBLIC_RELEASE       release automatically after approval (else manual)
@@ -34,9 +40,12 @@
 # Jobs (release run): prepare → tests → build (upload) → wait-for-build →
 # app-store-connect → github-release. prepare runs the offline store-tooling
 # tests on every run, then, before anything is built and only for the operations
-# switched on, checks the listing files, creates the tag's App Store version
-# when IOS_CREATE_VERSION is on and it is missing, and checks (read-only) that
-# the App Store version exists in a state that can take them. Waiting for the
+# switched on, checks the listing files, the screenshots and the header and
+# search results images (sizes, formats, alpha, well-formed files), creates the
+# tag's App Store version when IOS_CREATE_VERSION is on and it is missing, and
+# checks (read-only) that the App Store version exists in a state that can take
+# them (with review submission, a READY_FOR_REVIEW version's draft; with the
+# creative assets, the images' Asset Library state). Waiting for the
 # uploaded build is its own job, so "Re-run failed jobs" after a listing,
 # screenshot or review failure reuses the processed build's id instead of
 # waiting again against the original upload deadline; the store step is
@@ -105,6 +114,7 @@ jobs:
       listing: ${{ steps.gates.outputs.listing }}
       whats_new: ${{ steps.gates.outputs.whats_new }}
       screenshots: ${{ steps.gates.outputs.screenshots }}
+      creative: ${{ steps.gates.outputs.creative }}
       submit: ${{ steps.gates.outputs.submit }}
       public_release: ${{ steps.gates.outputs.public_release }}
       asc: ${{ steps.gates.outputs.asc }}
@@ -151,6 +161,7 @@ jobs:
           IOS_UPLOAD_LISTING: ${{ vars.IOS_UPLOAD_LISTING }}
           IOS_UPLOAD_WHATS_NEW: ${{ vars.IOS_UPLOAD_WHATS_NEW }}
           IOS_UPLOAD_SCREENSHOTS: ${{ vars.IOS_UPLOAD_SCREENSHOTS }}
+          IOS_UPLOAD_CREATIVE_ASSETS: ${{ vars.IOS_UPLOAD_CREATIVE_ASSETS }}
           IOS_SUBMIT_REVIEW: ${{ vars.IOS_SUBMIT_REVIEW }}
           IOS_PUBLIC_RELEASE: ${{ vars.IOS_PUBLIC_RELEASE }}
           IOS_BUILD_POLL_SECONDS: ${{ vars.IOS_BUILD_POLL_SECONDS }}
@@ -158,12 +169,18 @@ jobs:
           VALIDATION_MARKETING_VERSION: ${{ inputs.marketing_version }}
         run: python3 -u scripts/store/ios_release.py gates
 
+      # Local files only, for the switches that are on: the listing; screenshots
+      # that are not an accepted size or are truncated or corrupt; a header that is
+      # not a 3840x1646 PNG, a search results image that is not 3:2 PNG/JPEG from
+      # 1920 to 3840 wide, or an image that stores alpha. Their App Store Connect
+      # state is checked by the read-only version check below.
       - name: Check the listing files before building (no network)
         if: steps.gates.outputs.asc == 'true'
         env:
           UPLOAD_LISTING: ${{ steps.gates.outputs.listing }}
           UPLOAD_WHATS_NEW: ${{ steps.gates.outputs.whats_new }}
           UPLOAD_SCREENSHOTS: ${{ steps.gates.outputs.screenshots }}
+          UPLOAD_CREATIVE_ASSETS: ${{ steps.gates.outputs.creative }}
           SUBMIT_IOS_REVIEW: ${{ steps.gates.outputs.submit }}
           PUBLIC_RELEASE: ${{ steps.gates.outputs.public_release }}
         # The build id is not known yet; a dry run only checks the local inputs.
@@ -195,10 +212,13 @@ jobs:
           MARKETING_VERSION: ${{ steps.gates.outputs.marketing_version }}
         run: python3 -u scripts/store/asc_release.py --create-version --version "$MARKETING_VERSION"
 
-      # Tag runs with a listing, What's New, screenshot or review switch on only
-      # (asc is never true on validation runs, whose versions don't exist yet).
-      # The X.Y App Store version must exist: turn on IOS_CREATE_VERSION, or
-      # create it in App Store Connect before tagging.
+      # Tag runs with a listing, What's New, screenshot, creative or review switch
+      # on only (asc is never true on validation runs, whose versions don't exist
+      # yet). The X.Y App Store version must exist: turn on IOS_CREATE_VERSION, or
+      # create it in App Store Connect before tagging. Also fails, before the
+      # archive and upload, when a READY_FOR_REVIEW version has no usable draft
+      # (IOS_SUBMIT_REVIEW), or when the header / search results images cannot go
+      # on the version now (IOS_UPLOAD_CREATIVE_ASSETS).
       - name: Check the App Store version can take this release (read-only)
         if: steps.gates.outputs.asc == 'true'
         env:
@@ -209,6 +229,7 @@ jobs:
           LISTING: ${{ steps.gates.outputs.listing }}
           WHATS_NEW: ${{ steps.gates.outputs.whats_new }}
           SCREENSHOTS: ${{ steps.gates.outputs.screenshots }}
+          CREATIVE: ${{ steps.gates.outputs.creative }}
           SUBMIT: ${{ steps.gates.outputs.submit }}
         run: |
           set -euo pipefail
@@ -216,6 +237,7 @@ jobs:
           if [ "$LISTING" = true ]; then args+=(--listing); fi
           if [ "$WHATS_NEW" = true ]; then args+=(--whats-new); fi
           if [ "$SCREENSHOTS" = true ]; then args+=(--screenshots); fi
+          if [ "$CREATIVE" = true ]; then args+=(--creative); fi
           if [ "$SUBMIT" = true ]; then args+=(--submit); fi
           python3 -u scripts/store/ios_release.py preflight "${args[@]}"
 
@@ -545,7 +567,8 @@ jobs:
   app-store-connect:
     needs: [prepare, tests, build, wait-for-build]
     # With IOS_UPLOAD_BUILD on, only after this run's build is uploaded and processed;
-    # with it off, listing/What's New/screenshots run on their own (submit needs a build).
+    # with it off, listing/What's New/screenshots/creative assets run on their own
+    # (submit needs a build).
     if: >-
       !cancelled() && needs.prepare.result == 'success' &&
       needs.prepare.outputs.mode == 'release' &&
@@ -556,7 +579,8 @@ jobs:
        (needs.prepare.outputs.upload_build != 'true' &&
         needs.wait-for-build.result == 'skipped'))
     runs-on: ubuntu-latest
-    # Listing, screenshots (each set waits up to 10 min for processing) and submission.
+    # Listing, screenshots (each set waits up to 10 min for processing), creative
+    # assets (each new image up to 10 min) and submission.
     timeout-minutes: 60
     env:
       MARKETING_VERSION: ${{ needs.prepare.outputs.marketing_version }}
@@ -568,11 +592,16 @@ jobs:
         with:
           persist-credentials: false
           sparse-checkout-cone-mode: false
+          # Store scripts, catalog and listing, plus the screenshots in
+          # store/metadata/screenshots/ and the header / search results images in
+          # store/creative/.
           sparse-checkout: |
             /scripts/store/
             /store/
             /requirements-store.txt
 
+      # PyJWT signs the API token; Pillow flattens screenshots that store alpha
+      # into the RGB copies that are uploaded.
       - name: Install store tooling
         run: |
           python3 -m venv "$RUNNER_TEMP/store-tools"
@@ -580,11 +609,12 @@ jobs:
             --require-hashes -r requirements-store.txt
           echo "$RUNNER_TEMP/store-tools/bin" >> "$GITHUB_PATH"
 
-      - name: Listing / What's New / screenshots / review (gated)
+      - name: Listing / What's New / screenshots / creative assets / review (gated)
         env:
           UPLOAD_LISTING: ${{ needs.prepare.outputs.listing }}
           UPLOAD_WHATS_NEW: ${{ needs.prepare.outputs.whats_new }}
           UPLOAD_SCREENSHOTS: ${{ needs.prepare.outputs.screenshots }}
+          UPLOAD_CREATIVE_ASSETS: ${{ needs.prepare.outputs.creative }}
           SUBMIT_IOS_REVIEW: ${{ needs.prepare.outputs.submit }}
           PUBLIC_RELEASE: ${{ needs.prepare.outputs.public_release }}
           BUILD_ID: ${{ needs.wait-for-build.outputs.build_id }}
@@ -631,6 +661,7 @@ jobs:
           IOS_UPLOAD_LISTING: ${{ vars.IOS_UPLOAD_LISTING }}
           IOS_UPLOAD_WHATS_NEW: ${{ vars.IOS_UPLOAD_WHATS_NEW }}
           IOS_UPLOAD_SCREENSHOTS: ${{ vars.IOS_UPLOAD_SCREENSHOTS }}
+          IOS_UPLOAD_CREATIVE_ASSETS: ${{ vars.IOS_UPLOAD_CREATIVE_ASSETS }}
           IOS_SUBMIT_REVIEW: ${{ vars.IOS_SUBMIT_REVIEW }}
           IOS_PUBLIC_RELEASE: ${{ vars.IOS_PUBLIC_RELEASE }}
           IOS_BUILD_POLL_SECONDS: ${{ vars.IOS_BUILD_POLL_SECONDS }}

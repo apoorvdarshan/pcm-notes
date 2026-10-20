@@ -18,7 +18,8 @@ updates:
         patterns: ["*"]
 
   # The hash-pinned App Store Connect tooling (requirements-store.txt, compiled
-  # from requirements-store.in) that the release and store-check jobs install.
+  # from requirements-store.in: PyJWT, and Pillow for the screenshots' RGB copies)
+  # that the release and store-check jobs install.
   - package-ecosystem: pip
     directory: /
     schedule:
