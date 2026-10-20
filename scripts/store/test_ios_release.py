@@ -36,13 +36,6 @@ import validate_catalog  # noqa: E402
 import ios_release  # noqa: E402
 
 ROOT = HERE.parents[1]
-# Pillow flattens screenshots that store alpha. The Store release checks workflow
-# installs it (requirements-store.txt) and sets STORE_TESTS_NEED_PILLOW, so the
-# flattening tests can't skip there.
-PILLOW = asc_release.try_import_pillow()
-NEEDS_PILLOW = unittest.skipIf(
-    PILLOW is None and not os.environ.get("STORE_TESTS_NEED_PILLOW"), "Pillow not installed"
-)
 TAG = "v1.0.1"
 VERSION = "1.0.1"
 ALL_ON = {
@@ -1350,8 +1343,8 @@ class PreflightTests(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("header and search results images cannot be changed", output)
 
-    def test_cli_without_pillow_refuses_screenshots_with_alpha_that_would_have_to_be_uploaded(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(asc_release, "try_import_pillow", return_value=None):
+    def test_cli_refuses_screenshots_with_alpha_that_would_have_to_be_uploaded(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             sets, sums = [], {}
             for spec in asc_release.SCREENSHOT_SETS:
@@ -1371,7 +1364,6 @@ class PreflightTests(unittest.TestCase):
                     FakeAsc(screenshots={**sums, "APP_IPAD_PRO_3GEN_129": ["older"]}), "--screenshots")
                 self.assertEqual(code, 1)
                 self.assertIn("APP_IPAD_PRO_3GEN_129 screenshots 01.png have an alpha channel", output)
-                self.assertIn("install Pillow", output)
                 self.assertNotIn("APP_IPHONE_67 screenshots", output)
                 # Without the screenshot switch, the screenshots are not read.
                 fake = FakeAsc(screenshots={})
@@ -1532,16 +1524,9 @@ class AscCliTests(unittest.TestCase):
                 (directory / "01.png").write_bytes(png_bytes(width, height, color_type=6))
                 sets.append(spec._replace(directory=str(directory)))
             with mock.patch.object(asc_release, "SCREENSHOT_SETS", tuple(sets)):
-                with mock.patch.object(asc_release, "try_import_pillow", return_value=object()):
-                    code, output = self.run_cli({"UPLOAD_SCREENSHOTS": "true"})
-                self.assertEqual(code, 0, output)
-                self.assertIn("note: the APP_IPHONE_67 screenshots 01.png have an alpha channel", output)
-                self.assertIn("uploaded as RGB copies", output)
-                with mock.patch.object(asc_release, "try_import_pillow", return_value=None):
-                    code, output = self.run_cli({"UPLOAD_SCREENSHOTS": "true"})
-                self.assertEqual(code, 0, output)
-                self.assertIn("note: the APP_IPHONE_67 screenshots 01.png have an alpha channel", output)
-                self.assertIn("install Pillow", output)
+                code, output = self.run_cli({"UPLOAD_SCREENSHOTS": "true"})
+        self.assertEqual(code, 0, output)
+        self.assertIn("note: the APP_IPHONE_67 screenshots 01.png have an alpha channel", output)
 
     def test_creative_images_with_alpha_are_refused_before_any_call(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1831,9 +1816,9 @@ class ScreenshotTests(unittest.TestCase):
         self.assertEqual(fake.uploaded_files, [["01.png", "02.png"]])
         self.assertEqual(fake.screenshots["APP_IPHONE_67"], [md5(raw) for raw in images])
 
-    def test_without_pillow_a_set_with_alpha_is_never_handed_to_asc(self) -> None:
+    def test_a_set_with_alpha_is_never_handed_to_asc(self) -> None:
         # asc refuses any PNG that stores alpha, even an opaque one.
-        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(asc_release, "try_import_pillow", return_value=None):
+        with tempfile.TemporaryDirectory() as tmp:
             root = self.make_dir(tmp, [png_bytes(1290, 2796, color_type=6)])
             fake = FakeAsc(screenshots={"APP_IPHONE_67": ["stale"]})
             err = io.StringIO()
@@ -1842,7 +1827,6 @@ class ScreenshotTests(unittest.TestCase):
                 asc_release.upload_screenshot_set(fake, app_id=APP, version_id="V1", locale="en-US", spec=self.SPEC,
                                                   live=live, root=root)
         self.assertIn("alpha channel", err.getvalue())
-        self.assertIn("install Pillow", err.getvalue())
         self.assertEqual(fake.writes(), [])
 
     def test_a_set_with_alpha_that_app_store_connect_holds_is_left_alone(self) -> None:
@@ -1856,8 +1840,8 @@ class ScreenshotTests(unittest.TestCase):
                     self.assertFalse(self.upload(fake, root, frozen_state=frozen_state))
                     self.assertEqual(fake.writes(), [])
 
-    def test_without_pillow_every_set_with_alpha_is_refused_before_any_set_is_replaced(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(asc_release, "try_import_pillow", return_value=None):
+    def test_every_set_with_alpha_is_refused_before_any_set_is_replaced(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             for spec, color_type in zip(asc_release.SCREENSHOT_SETS, (2, 6)):
                 (root / spec.directory).mkdir(parents=True)
@@ -1970,114 +1954,6 @@ class ScreenshotTests(unittest.TestCase):
                 path.unlink()
             with self.assertRaises(SystemExit):
                 quiet(asc_release.validate_screenshots, root)
-
-
-
-@NEEDS_PILLOW
-class ScreenshotFlattenTests(unittest.TestCase):
-    """With Pillow, the path release runs take: PNGs that store alpha go up as RGB copies."""
-
-    SPEC = ScreenshotTests.SPEC
-
-    def setUp(self) -> None:
-        if PILLOW is None:
-            self.fail("Pillow is required here (STORE_TESTS_NEED_PILLOW is set)")
-        tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(tmp.cleanup)
-        self.root = Path(tmp.name)
-        (self.root / "shots").mkdir()
-
-    def rgba_source(self) -> Path:
-        image = PILLOW.new("RGBA", (1290, 2796), (24, 96, 160, 255))
-        for x in range(0, 1290, 7):
-            image.putpixel((x, x % 2796), (x % 256, 255 - x % 256, (3 * x) % 256, 255))
-        image.putpixel((1, 0), (200, 100, 50, 0))  # transparent
-        image.putpixel((2, 0), (200, 100, 50, 128))  # translucent
-        path = self.root / "shots" / "01.png"
-        image.save(path)
-        return path
-
-    def upload(self, fake: FakeAsc, *, frozen_state: str | None = None) -> tuple[bool, dict[str, bytes]]:
-        """Runs the set's upload and returns what asc was handed, by file name."""
-        handed: dict[str, bytes] = {}
-        run = fake.run
-
-        def capture(*args, **kwargs):
-            if args[:2] == ("screenshots", "upload"):
-                handed.update({p.name: p.read_bytes() for p in Path(flag(args, "--path")).iterdir()})
-            return run(*args, **kwargs)
-
-        fake.run = capture  # type: ignore[method-assign]
-        live = asc_release.live_screenshot_sets(fake, app_id=APP, version_id="V1", locale="en-US")
-        with redirect_stdout(io.StringIO()):
-            uploaded = asc_release.upload_screenshot_set(fake, app_id=APP, version_id="V1", locale="en-US",
-                                                         spec=self.SPEC, live=live, root=self.root,
-                                                         frozen_state=frozen_state)
-        return uploaded, handed
-
-    def test_an_rgba_screenshot_is_uploaded_as_an_rgb_copy_with_the_same_pixels(self) -> None:
-        source = self.rgba_source()
-        committed = source.read_bytes()
-        self.assertTrue(asc_cli.image_has_alpha(source))
-        fake = FakeAsc(screenshots={"APP_IPHONE_67": ["older"]})
-        uploaded, handed = self.upload(fake)
-        self.assertTrue(uploaded)
-        self.assertEqual(list(handed), ["01.png"])
-        copy = self.root / "copy.png"
-        copy.write_bytes(handed["01.png"])
-        # asc refuses any PNG that stores alpha, even an opaque one.
-        self.assertFalse(asc_cli.image_has_alpha(copy))
-        with PILLOW.open(source) as original, PILLOW.open(copy) as sent:
-            self.assertEqual(sent.mode, "RGB")
-            self.assertEqual(sent.size, original.size)
-            expected = original.convert("RGB")
-            # Transparent pixels are laid over black, translucent ones blended with it.
-            expected.putpixel((1, 0), (0, 0, 0))
-            expected.putpixel((2, 0), sent.getpixel((2, 0)))
-            self.assertEqual(sent.tobytes(), expected.tobytes())
-            red, green, blue = sent.getpixel((2, 0))
-            self.assertTrue(abs(red - 100) <= 1 and abs(green - 50) <= 1 and abs(blue - 25) <= 1, (red, green, blue))
-        # The committed file is never changed.
-        self.assertEqual(source.read_bytes(), committed)
-        self.assertEqual(fake.screenshots["APP_IPHONE_67"], [md5(handed["01.png"])])
-        # A rerun finds the copies (or, as for 1.0, the committed files) live and uploads nothing.
-        for live in ([md5(handed["01.png"])], [md5(committed)]):
-            for frozen_state in (None, "WAITING_FOR_REVIEW"):
-                fake = FakeAsc(screenshots={"APP_IPHONE_67": live})
-                with self.subTest(live=live, frozen_state=frozen_state):
-                    self.assertEqual(self.upload(fake, frozen_state=frozen_state), (False, {}))
-                    self.assertEqual(fake.writes(), [])
-
-    def test_a_copy_that_still_has_alpha_is_never_handed_to_asc(self) -> None:
-        self.rgba_source()
-        fake = FakeAsc(screenshots={"APP_IPHONE_67": ["older"]})
-        err = io.StringIO()
-        with mock.patch.object(asc_release, "opaque_rgb", lambda Image, img: img.convert("RGBA")), \
-                redirect_stderr(err), self.assertRaises(SystemExit):
-            self.upload(fake)
-        self.assertIn("still have an alpha channel", err.getvalue())
-        self.assertEqual(fake.writes(), [])
-
-    def test_sets_with_alpha_are_not_refused_before_the_build(self) -> None:
-        self.rgba_source()
-        spec = self.SPEC._replace(directory=str(self.root / "shots"))
-        with mock.patch.object(asc_release, "SCREENSHOT_SETS", (spec,)):
-            self.assertEqual(asc_release.screenshot_upload_problems({}, self.root), [])
-
-    @unittest.skipIf(os.environ.get("STORE_TESTS_SKIP_REPOSITORY_FILES") == "1",
-                     "repository screenshots are checked by the release only when their switch is on")
-    def test_the_committed_screenshots_flatten_to_rgb_copies_with_the_same_pixels(self) -> None:
-        for spec in asc_release.SCREENSHOT_SETS:
-            for path in asc_release.screenshot_files(spec):
-                committed = path.read_bytes()
-                copy = self.root / "copy.png"
-                copy.write_bytes(asc_release.upload_png(path))
-                with self.subTest(path=path.relative_to(ROOT)):
-                    self.assertFalse(asc_cli.image_has_alpha(copy))
-                    with PILLOW.open(path) as original, PILLOW.open(copy) as sent:
-                        self.assertEqual(sent.mode, "RGB")
-                        self.assertEqual(sent.tobytes(), original.convert("RGB").tobytes())
-                    self.assertEqual(path.read_bytes(), committed)
 
 
 def tips_fake(*, draft: bool = True, versions: dict[str, list[tuple[int, str]]] | None = None, **states: str) -> FakeAsc:

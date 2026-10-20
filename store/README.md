@@ -85,9 +85,8 @@ that runs it:
   and timeouts) and network drops, which asc reports as a generic exit 1 with a
   connection error; auth, usage and not-found errors stop at once.
 - asc refuses to upload a PNG that stores an alpha channel or transparency (PNG
-  colour types 4 and 6, or a `tRNS` chunk), even when every pixel is opaque.
-  Screenshots that store alpha go up as RGB copies (see [Screenshots](#screenshots));
-  creative images must be RGB (see [Creative assets](#creative-assets)).
+  colour types 4 and 6, or a `tRNS` chunk), even when every pixel is opaque. See
+  [Screenshots](#screenshots) and [Creative assets](#creative-assets).
 
 The binary itself is still exported and uploaded by `xcodebuild`. To move to a
 newer asc, change `ASC_VERSION` and both `ASC_SHA256` values from that release's
@@ -225,22 +224,12 @@ set matches the repository.
 With the switch on and no PNGs in a directory, the run fails with a clear
 message.
 
-asc refuses to upload a PNG with an alpha channel, even a fully opaque one, and
-the ten committed mockups are RGBA. The store step never hands asc the committed
-files: it writes each set to a temporary folder, where a PNG that stores alpha
-becomes an RGB copy with its transparent pixels laid over black (Pillow, pinned
-with hashes in `requirements-store.txt`; the committed mockups are fully opaque,
-so their copies have the same pixels). The committed files are never changed.
-Every file in that folder is checked for alpha once more before asc gets it. A
-set matches App Store Connect when it holds either the committed files (as for
-1.0) or those copies, so neither is uploaded again. Release jobs install Pillow
-only when `IOS_UPLOAD_SCREENSHOTS` is on. Without it, a set with alpha that would
-have to be uploaded is refused by the read-only check before the build (and by
-the store step, which checks every set before replacing any). The dry run prints
-a note for screenshots that have an alpha channel. For a set App Store Connect
-holds as copies, a Pillow update that changes the copies' bytes makes the next
-run with the switch on upload it again (and a rerun fail while the version is in
-review).
+asc refuses to upload a PNG with an alpha channel, and the ten committed mockups
+are RGBA. They can stay as they are while App Store Connect already holds them,
+since a set that matches is never uploaded. A set that would have to be replaced
+must be RGB: the read-only check before the build refuses it otherwise (and the
+store step checks every set before replacing any), so export changed screenshots
+as RGB PNGs. The dry run prints a note for screenshots that have an alpha channel.
 
 ## Creative assets
 
@@ -335,7 +324,7 @@ RevenueCat switch.
 | [`scripts/store/validate_catalog.py`](../scripts/store/validate_catalog.py) | Catalog ↔ app ↔ StoreKit configuration check |
 | [`scripts/store/print_gates.py`](../scripts/store/print_gates.py) | Prints the switches as the release reads them (`INVALID` for values that fail a run) |
 | [`scripts/store/redact_logs.py`](../scripts/store/redact_logs.py) | Removes the App Store Connect key and issuer IDs from build logs before they are kept as an artifact |
-| [`scripts/store/test_ios_release.py`](../scripts/store/test_ios_release.py) | Offline tests against a fake App Store Connect behind `asc`: disabled/invalid switches, tag mismatch, validation mode, export compliance (project and archived `Info.plist`), version creation (left alone when it exists, refused while another version is in flight or not newer), preflight, build wait timeout/failure/ambiguity/mismatch/old build/missing upload date, selection read-back and recheck before any review write, listing, What's New (strict only when its switch is on), screenshots (RGB copies of PNGs that store alpha, the committed files unchanged), creative assets, products and the items a draft may hold, idempotent reruns, the asc runner (credentials, read-only mode, redaction, pinned checksum), the read-only export, log redaction, release notes, the printed switches |
+| [`scripts/store/test_ios_release.py`](../scripts/store/test_ios_release.py) | Offline tests against a fake App Store Connect behind `asc`: disabled/invalid switches, tag mismatch, validation mode, export compliance (project and archived `Info.plist`), version creation (left alone when it exists, refused while another version is in flight or not newer), preflight, build wait timeout/failure/ambiguity/mismatch/old build/missing upload date, selection read-back and recheck before any review write, listing, What's New (strict only when its switch is on), screenshots, creative assets, products and the items a draft may hold, idempotent reruns, the asc runner (credentials, read-only mode, redaction, pinned checksum), the read-only export, log redaction, release notes, the printed switches |
 | [`scripts/release_notes.py`](../scripts/release_notes.py) | GitHub Release notes from `RELEASE_NOTES.md` (generated notes when the tag has no section or the file is missing) |
 
 The **Store release checks** workflow installs and checks the pinned `asc`
@@ -347,16 +336,12 @@ must pass because a missing file only means generated notes. Every iOS Release
 run also runs the offline tests first, except the ones that check the
 repository's listing and screenshot files (`STORE_TESTS_SKIP_REPOSITORY_FILES=1`);
 the check that `RELEASE_NOTES.md` repeats no section runs only when the file
-exists. The store scripts need only the standard library, except Pillow for the
-screenshots' RGB copies (`requirements-store.txt`, installed with
-`--require-hashes`): the Store release checks always install it and run the
-flattening tests with `STORE_TESTS_NEED_PILLOW=1`, and release jobs install it
-only when `IOS_UPLOAD_SCREENSHOTS` is on (elsewhere those tests are skipped).
-Release jobs install the pinned `asc` only when they talk to App Store Connect,
-and run the store scripts unbuffered (`python3 -u`) so the build wait's progress
-shows live. Dependabot proposes monthly updates for the pinned GitHub Actions,
-the Swift packages, the store tooling's Pillow, the fuzzers' Atheris and the
-website's npm tooling; `asc` is pinned by hand in `asc_cli.py` (see above).
+exists. The store scripts need only the standard library. Release jobs install
+the pinned `asc` only when they talk to App Store Connect, and run the store
+scripts unbuffered (`python3 -u`) so the build wait's progress shows live.
+Dependabot proposes monthly updates for the pinned GitHub Actions, the Swift
+packages, the fuzzers' Atheris and the website's npm tooling; `asc` is pinned by
+hand in `asc_cli.py` (see above).
 
 ## Releasing
 
@@ -378,7 +363,6 @@ website's npm tooling; `asc` is pinned by hand in `asc_cli.py` (see above).
 ## Dry run
 
 ```bash
-python3 -m pip install --require-hashes -r requirements-store.txt  # Pillow, for the flattening tests
 python3 -m unittest scripts/store/test_ios_release.py
 python3 scripts/store/print_gates.py
 python3 scripts/store/validate_catalog.py

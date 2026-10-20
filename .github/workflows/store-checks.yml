@@ -1,6 +1,5 @@
 # Offline checks of the iOS release tooling: switch handling, build waiting and
-# selection, listing and screenshot inputs (with the pinned Pillow that flattens
-# screenshots storing alpha into RGB copies), the in-app purchase catalog, that the
+# selection, listing and screenshot inputs, the in-app purchase catalog, that the
 # pinned App Store Connect CLI (asc) still downloads with its pinned checksum, and
 # that a release without RELEASE_NOTES.md still passes its pre-build checks.
 # Never contacts App Store Connect.
@@ -12,7 +11,6 @@ on:
       - 'scripts/store/**'
       - 'scripts/release_notes.py'
       - 'store/**'
-      - 'requirements-store.txt'
       - 'RELEASE_NOTES.md'
       - 'ios/PCMNotes/PCMNotes.xcodeproj/project.pbxproj'
       - 'ios/PCMNotes/PCMNotes.storekit'
@@ -25,7 +23,6 @@ on:
       - 'scripts/store/**'
       - 'scripts/release_notes.py'
       - 'store/**'
-      - 'requirements-store.txt'
       - 'RELEASE_NOTES.md'
       - 'ios/PCMNotes/PCMNotes.xcodeproj/project.pbxproj'
       - 'ios/PCMNotes/PCMNotes.storekit'
@@ -57,7 +54,6 @@ jobs:
             /ios/PCMNotes/PCMNotes.xcodeproj/project.pbxproj
             /ios/PCMNotes/PCMNotes.storekit
             /ios/PCMNotes/PCMNotes/TipStore.swift
-            /requirements-store.txt
             /RELEASE_NOTES.md
 
       - name: Print the iOS release switches
@@ -82,19 +78,7 @@ jobs:
           python3 scripts/store/asc_cli.py install --dest "$RUNNER_TEMP/asc-bin"
           PATH="$RUNNER_TEMP/asc-bin:$PATH" python3 scripts/store/asc_cli.py check
 
-      # Pillow flattens screenshots that store alpha into RGB copies for upload.
-      # Release jobs install this hash-locked set before uploading screenshots, so
-      # a broken pin (e.g. a Dependabot bump) fails here instead of in a release.
-      - name: Install the pinned store tooling
-        run: |
-          python3 -m venv "$RUNNER_TEMP/store-tools"
-          "$RUNNER_TEMP/store-tools/bin/python" -m pip install --disable-pip-version-check \
-            --require-hashes -r requirements-store.txt
-          echo "$RUNNER_TEMP/store-tools/bin" >> "$GITHUB_PATH"
-
       - name: Test switches, build wait, listing, screenshots, creative assets and submission (offline)
-        env:
-          STORE_TESTS_NEED_PILLOW: "1"
         run: python3 -m unittest -v scripts/store/test_ios_release.py
 
       - name: Check the in-app purchase catalog against the app

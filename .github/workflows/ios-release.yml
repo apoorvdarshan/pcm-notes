@@ -23,9 +23,7 @@
 #   IOS_UPLOAD_LISTING       name, subtitle, privacy URL, description, keywords,
 #                            promotional text, marketing/support URLs
 #   IOS_UPLOAD_WHATS_NEW     What's New text
-#   IOS_UPLOAD_SCREENSHOTS   iPhone 6.7" and iPad 12.9" screenshots (any that
-#                            store alpha go up as RGB copies, made with the
-#                            pinned Pillow in requirements-store.txt)
+#   IOS_UPLOAD_SCREENSHOTS   iPhone 6.7" and iPad 12.9" screenshots
 #   IOS_UPLOAD_CREATIVE_ASSETS  product page header and search results images
 #                            (store/creative/ios): uploaded and reviewed on their
 #                            own, placed on the version once Apple approves them
@@ -141,7 +139,6 @@ jobs:
             /ios/PCMNotes/PCMNotes.xcodeproj/
             /ios/PCMNotes/PCMNotes.storekit
             /ios/PCMNotes/PCMNotes/TipStore.swift
-            /requirements-store.txt
             /RELEASE_NOTES.md
 
       # These checks run before anything reaches App Store Connect.
@@ -175,16 +172,6 @@ jobs:
           IOS_BUILD_WAIT_MINUTES: ${{ vars.IOS_BUILD_WAIT_MINUTES }}
           VALIDATION_MARKETING_VERSION: ${{ inputs.marketing_version }}
         run: python3 -u scripts/store/ios_release.py gates
-
-      # Pillow flattens screenshots that store alpha into RGB copies for upload;
-      # the read-only check below needs it to compare them.
-      - name: Install the pinned store tooling (IOS_UPLOAD_SCREENSHOTS)
-        if: steps.gates.outputs.screenshots == 'true'
-        run: |
-          python3 -m venv "$RUNNER_TEMP/store-tools"
-          "$RUNNER_TEMP/store-tools/bin/python" -m pip install --disable-pip-version-check \
-            --require-hashes -r requirements-store.txt
-          echo "$RUNNER_TEMP/store-tools/bin" >> "$GITHUB_PATH"
 
       - name: Check the listing files before building (no network)
         if: steps.gates.outputs.asc == 'true'
@@ -598,16 +585,6 @@ jobs:
           sparse-checkout: |
             /scripts/store/
             /store/
-            /requirements-store.txt
-
-      # Pillow flattens screenshots that store alpha into RGB copies for upload.
-      - name: Install the pinned store tooling (IOS_UPLOAD_SCREENSHOTS)
-        if: needs.prepare.outputs.screenshots == 'true'
-        run: |
-          python3 -m venv "$RUNNER_TEMP/store-tools"
-          "$RUNNER_TEMP/store-tools/bin/python" -m pip install --disable-pip-version-check \
-            --require-hashes -r requirements-store.txt
-          echo "$RUNNER_TEMP/store-tools/bin" >> "$GITHUB_PATH"
 
       - name: Install the pinned App Store Connect CLI
         run: |
