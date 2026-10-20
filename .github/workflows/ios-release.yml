@@ -19,6 +19,10 @@
 # when the master switch is off). See store/README.md for the full table.
 #   IOS_RELEASE_AUTOMATION   master switch for every App Store operation below
 #   IOS_CREATE_VERSION       create the tag's App Store version when it is missing
+#   IOS_CREATE_PRODUCTS      create the catalog's iOS products App Store Connect does
+#                            not have yet, Ready to Submit (store/catalog/products.json;
+#                            tag runs only; validation runs list them read-only).
+#                            Existing products are never changed
 #   IOS_UPLOAD_BUILD         run the iOS tests, then build + upload the binary
 #   IOS_UPLOAD_LISTING       name, subtitle, privacy URL, description, keywords,
 #                            promotional text, marketing/support URLs
@@ -40,15 +44,16 @@
 # app-store-connect → github-release. prepare runs the offline store-tooling
 # tests on every run, then, before anything is built and only for the operations
 # switched on, checks the listing files, creates the tag's App Store version
-# when IOS_CREATE_VERSION is on and it is missing, and checks (read-only) that
-# the App Store version exists in a state that can take them. Waiting for the
-# uploaded build is its own job, so "Re-run failed jobs" after a listing,
-# screenshot or review failure reuses the processed build's id instead of
-# waiting again against the original upload deadline; the store step is
-# idempotent, so such a rerun also works once the version sits in a draft
-# submission or waits for review. Tag runs share one concurrency group and
-# queue (queue: max), so releases run one at a time and a waiting tag run is
-# never dropped.
+# when IOS_CREATE_VERSION is on and it is missing, creates the catalog's missing
+# products when IOS_CREATE_PRODUCTS is on (after a read-only check of every
+# one), and checks (read-only) that the App Store version exists in a state
+# that can take them. Waiting for the uploaded build is its own job, so
+# "Re-run failed jobs" after a listing, screenshot or review failure reuses the
+# processed build's id instead of waiting again against the original upload
+# deadline; the store step is idempotent, so such a rerun also works once the
+# version sits in a draft submission or waits for review. Tag runs share one
+# concurrency group and queue (queue: max), so releases run one at a time and a
+# waiting tag run is never dropped.
 #
 # Export compliance: the app declares ITSAppUsesNonExemptEncryption = NO in its
 # build settings. Every run that builds checks it in each configuration of the
@@ -109,13 +114,15 @@ concurrency:
 jobs:
   prepare:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Product creation waits for Apple to process each App Review screenshot.
+    timeout-minutes: 30
     env:
       # Validation runs never write to App Store Connect; asc enforces it.
       ASC_READ_ONLY: ${{ github.event_name == 'workflow_dispatch' && '1' || '' }}
     outputs:
       mode: ${{ steps.gates.outputs.mode }}
       create_version: ${{ steps.gates.outputs.create_version }}
+      create_products: ${{ steps.gates.outputs.create_products }}
       build: ${{ steps.gates.outputs.build }}
       upload_build: ${{ steps.gates.outputs.upload_build }}
       listing: ${{ steps.gates.outputs.listing }}
@@ -134,6 +141,7 @@ jobs:
         with:
           persist-credentials: false
           sparse-checkout-cone-mode: false
+          # The two workflow files are read by the store-script tests.
           sparse-checkout: |
             /scripts/store/
             /scripts/release_notes.py
@@ -143,6 +151,8 @@ jobs:
             /ios/PCMNotes/PCMNotes/TipStore.swift
             /requirements-store.txt
             /RELEASE_NOTES.md
+            /.github/workflows/ios-release.yml
+            /.github/workflows/store-checks.yml
 
       # These checks run before anything reaches App Store Connect.
       # The repository's listing and screenshot files are skipped here: they are
@@ -164,6 +174,7 @@ jobs:
         env:
           IOS_RELEASE_AUTOMATION: ${{ vars.IOS_RELEASE_AUTOMATION }}
           IOS_CREATE_VERSION: ${{ vars.IOS_CREATE_VERSION }}
+          IOS_CREATE_PRODUCTS: ${{ vars.IOS_CREATE_PRODUCTS }}
           IOS_UPLOAD_BUILD: ${{ vars.IOS_UPLOAD_BUILD }}
           IOS_UPLOAD_LISTING: ${{ vars.IOS_UPLOAD_LISTING }}
           IOS_UPLOAD_WHATS_NEW: ${{ vars.IOS_UPLOAD_WHATS_NEW }}
@@ -201,7 +212,7 @@ jobs:
       - name: Install the pinned App Store Connect CLI
         if: >-
           steps.gates.outputs.build == 'true' || steps.gates.outputs.asc == 'true' ||
-          steps.gates.outputs.create_version == 'true'
+          steps.gates.outputs.create_version == 'true' || steps.gates.outputs.product_plan == 'true'
         run: |
           python3 scripts/store/asc_cli.py install --dest "$RUNNER_TEMP/asc-bin"
           PATH="$RUNNER_TEMP/asc-bin:$PATH" python3 scripts/store/asc_cli.py check
@@ -221,6 +232,27 @@ jobs:
           CREATE_IOS_VERSION: ${{ steps.gates.outputs.create_version }}
           MARKETING_VERSION: ${{ steps.gates.outputs.marketing_version }}
         run: python3 -u scripts/store/asc_release.py --create-version --version "$MARKETING_VERSION"
+
+      # Every iOS product in store/catalog/products.json that App Store Connect
+      # does not have yet is created and brought to Ready to Submit, so
+      # IOS_SUBMIT_REVIEW attaches it in this same run. The read-only plan runs
+      # first and must pass for every product (fields, review screenshot, price
+      # point, territories) before anything is written, so a problem stops the run
+      # before the build. A product an interrupted run left in Missing Metadata is
+      # finished, never created twice; other existing products are only compared
+      # (warnings). Validation runs only print the plan (asc is read-only there).
+      - name: Create missing App Store products (IOS_CREATE_PRODUCTS)
+        if: steps.gates.outputs.product_plan == 'true'
+        env:
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY_P8: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
+          CREATE_IOS_PRODUCTS: ${{ steps.gates.outputs.create_products }}
+        run: |
+          set -euo pipefail
+          command=plan
+          [ "$CREATE_IOS_PRODUCTS" = true ] && command=create
+          python3 -u scripts/store/asc_products.py "$command"
 
       # Tag runs with a listing, What's New, screenshot, creative asset or review switch on only
       # (asc is never true on validation runs, whose versions don't exist yet).
@@ -662,6 +694,7 @@ jobs:
         env:
           IOS_RELEASE_AUTOMATION: ${{ vars.IOS_RELEASE_AUTOMATION }}
           IOS_CREATE_VERSION: ${{ vars.IOS_CREATE_VERSION }}
+          IOS_CREATE_PRODUCTS: ${{ vars.IOS_CREATE_PRODUCTS }}
           IOS_UPLOAD_BUILD: ${{ vars.IOS_UPLOAD_BUILD }}
           IOS_UPLOAD_LISTING: ${{ vars.IOS_UPLOAD_LISTING }}
           IOS_UPLOAD_WHATS_NEW: ${{ vars.IOS_UPLOAD_WHATS_NEW }}
