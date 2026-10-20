@@ -13,8 +13,7 @@ never changed. Each operation only runs when its switch is on (see
 store/README.md); with every switch off this script does nothing.
 
 Submitting for review covers the App Store version and any Ready-to-Submit
-in-app purchases listed for `ios` in store/catalog/products.json (including any
-asc_products.py created earlier in the same run). They all join one draft
+in-app purchases listed in store/catalog/products.json. They all join one draft
 review submission as Review Submission Items (subscriptions through their
 `subscriptionVersions`, in-app purchases such as the tip jar through their
 `inAppPurchaseVersions`) only after this run's build is rechecked, and reach App
@@ -978,20 +977,19 @@ def submit_creative_review(
     return submission_id
 
 
-# The catalog's product groups (asc_products.PRODUCT_GROUPS maps each to its App Store type).
-CATALOG_PRODUCT_GROUPS = ("subscriptions", "consumables", "non_consumables", "tips")
+PRODUCT_GROUPS = ("subscriptions", "consumables", "tips")
 
 
 def intended_product_ids(catalog_path: Path | None = None) -> set[str]:
-    """Product IDs the release is allowed to submit: the canonical catalog's iOS products."""
+    """Product IDs the release is allowed to submit, from the canonical catalog."""
     catalog = json.loads(
         (catalog_path or ROOT / "store" / "catalog" / "products.json").read_text(encoding="utf-8")
     )
     ids: set[str] = set()
-    for group in CATALOG_PRODUCT_GROUPS:
+    for group in PRODUCT_GROUPS:
         for item in catalog.get(group) or []:
             pid = item.get("id")
-            if isinstance(pid, str) and pid and "ios" in (item.get("platforms") or []):
+            if isinstance(pid, str) and pid:
                 ids.add(pid)
     return ids
 
@@ -1162,18 +1160,6 @@ def current_subscription_version(versions: list[dict[str, Any]]) -> str | None:
     if not candidates:
         return versions[0]["id"] if versions else None
     return max(candidates, key=lambda v: v["attributes"]["version"])["id"]
-
-
-def current_version_id(versions: list[dict[str, Any]]) -> str | None:
-    """The highest-numbered version, whatever its state (asc_products.py reads a product's parts from it).
-
-    App Store Connect allows one version in flight per product, so a product
-    being created or finished has its parts on this one.
-    """
-    numbered = [v for v in versions if attrs(v).get("version") is not None]
-    if not numbered:
-        return versions[0]["id"] if versions else None
-    return max(numbered, key=lambda v: int(attrs(v)["version"]))["id"]
 
 
 def in_app_purchase_versions(asc: asc_cli.Asc, iap_id: str) -> list[dict[str, Any]]:

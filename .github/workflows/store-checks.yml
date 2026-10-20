@@ -59,14 +59,11 @@ jobs:
             /ios/PCMNotes/PCMNotes/TipStore.swift
             /requirements-store.txt
             /RELEASE_NOTES.md
-            /.github/workflows/ios-release.yml
-            /.github/workflows/store-checks.yml
 
       - name: Print the iOS release switches
         env:
           IOS_RELEASE_AUTOMATION: ${{ vars.IOS_RELEASE_AUTOMATION }}
           IOS_CREATE_VERSION: ${{ vars.IOS_CREATE_VERSION }}
-          IOS_CREATE_PRODUCTS: ${{ vars.IOS_CREATE_PRODUCTS }}
           IOS_UPLOAD_BUILD: ${{ vars.IOS_UPLOAD_BUILD }}
           IOS_UPLOAD_LISTING: ${{ vars.IOS_UPLOAD_LISTING }}
           IOS_UPLOAD_WHATS_NEW: ${{ vars.IOS_UPLOAD_WHATS_NEW }}
@@ -108,10 +105,9 @@ jobs:
           UPLOAD_LISTING=true UPLOAD_SCREENSHOTS=true SUBMIT_IOS_REVIEW=true PUBLIC_RELEASE=false \
             python3 scripts/store/asc_release.py --dry-run --build-id DRY-RUN --build-number 1
           for script in scripts/store/ios_release.py scripts/store/asc_release.py scripts/store/asc_cli.py \
-                        scripts/store/asc_products.py scripts/store/export_listing.py scripts/release_notes.py; do
+                        scripts/store/export_listing.py scripts/release_notes.py; do
             python3 "$script" --help > /dev/null
           done
-          python3 scripts/store/asc_products.py create  # CREATE_IOS_PRODUCTS unset: skipped, no calls
 
       # A missing RELEASE_NOTES.md means GitHub's generated notes, so the checks the
       # iOS Release workflow runs before building must pass without it too. On a
