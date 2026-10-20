@@ -1,0 +1,91 @@
+# PCM Notes' store-release configuration. Schema:
+# https://github.com/apoorvdarshan/store-release/blob/v0.2.0/docs/config.md
+# Switches stay in repository variables and secrets in repository secrets.
+schema = 1
+
+[app]
+name = "PCM Notes"
+slug = "pcm-notes"
+
+[release_notes]
+path = "RELEASE_NOTES.md"
+# Only the tag being released must have one section; other duplicate headings never failed a check.
+unique_headings = false
+
+[catalog]
+path = "store/catalog/products.json"
+groups = ["subscriptions", "consumables", "tips"]
+id_prefix = "com.apoorvdarshan.iitjee."
+storekit = "ios/PCMNotes/PCMNotes.storekit"
+products_source = "ios/PCMNotes/PCMNotes/TipStore.swift"
+
+[checks]
+paths = [
+  "store/**",
+  "RELEASE_NOTES.md",
+  "ios/PCMNotes/PCMNotes.xcodeproj/project.pbxproj",
+  "ios/PCMNotes/PCMNotes.storekit",
+  "ios/PCMNotes/PCMNotes/TipStore.swift",
+  ".github/workflows/ios-release.yml",
+  ".github/workflows/store-checks.yml",
+]
+
+[ios]
+# PCM Notes' own release scripts (scripts/store at 517b61a), ported unchanged.
+flow = "pcm-notes"
+tag_prefix = "v"
+bundle_id = "com.apoorvdarshan.iitjee"
+asc_app_id = "6792598227"
+team_id = "23RV7FYH36"
+project = "ios/PCMNotes/PCMNotes.xcodeproj"
+scheme = "PCMNotes"
+app_target = "PCMNotes"
+locale = "en-US"
+gate_jobs = [
+  { id = "tests", uses = "./.github/workflows/ios-tests.yml" },
+]
+# The iOS tests run after prepare, only on a tag push that uploads a build.
+gate_policy = "when-uploading"
+
+[ios.build]
+developer_dir = "/Applications/Xcode_27.app/Contents/Developer"
+# The app bundles a PDF per chapter generated from the note images.
+checkout = ["/ios/", "/physics/", "/chemistry/", "/mathematics/"]
+package_cache_files = ["ios/**/Package.resolved"]
+# Every tracked note page is in the archive (OfflineNotes/manifest.json against git).
+post_archive = ["scripts/ci/check_offline_notes.sh"]
+
+[ios.listing]
+source = "files"
+dir = "store/metadata/ios"
+
+[ios.whats_new]
+source = "files"
+
+[[ios.screenshots.sets]]
+display_type = "APP_IPHONE_67"
+dir = "store/metadata/screenshots/ios/6.7"
+required = true
+
+[[ios.screenshots.sets]]
+display_type = "APP_IPAD_PRO_3GEN_129"
+dir = "store/metadata/screenshots/ios/12.9"
+required = true
+
+[[ios.screenshots.sets]]
+display_type = "APP_IPHONE_DUO"
+dir = "store/metadata/screenshots/ios/iphone-duo"
+required = false
+
+[[ios.screenshots.sets]]
+display_type = "WATCH"
+dir = "store/metadata/screenshots/ios/watch"
+required = false
+
+[ios.creative]
+dir = "store/creative/ios"
+
+[ios.github_release]
+title = "PCM Notes {tag}{build_suffix}"
+on_existing = "keep"
+latest = "always"

@@ -1,7 +1,8 @@
-# Coverage-guided fuzzing with Atheris (libFuzzer for Python) of the parsers that
-# decide what a release does: the release-notes lookup, the IOS_* release switches,
-# App Store Connect build selection and the iOS test-result checker. Each target in
-# fuzz/ asserts the safety properties in its docstring; a failure keeps the crashing
+# Coverage-guided fuzzing with Atheris (libFuzzer for Python) of the iOS test-result
+# checker that decides whether the iOS tests pass. (The targets for the release-notes
+# lookup, the IOS_* release switches and App Store Connect build selection went with
+# the release tooling to apoorvdarshan/store-release.) Each target in fuzz/
+# asserts the safety properties in its docstring; a failure keeps the crashing
 # input as an artifact. First, the targets are replayed on fixed random inputs
 # (fuzz/test_fuzz_targets.py), which also proves each one catches a broken
 # implementation.
@@ -14,16 +15,12 @@ on:
   push:
     branches: [main]
     paths:
-      - 'scripts/release_notes.py'
       - 'scripts/ios_test_summary.py'
-      - 'scripts/store/ios_release.py'
       - 'fuzz/**'
       - '.github/workflows/fuzz.yml'
   pull_request:
     paths:
-      - 'scripts/release_notes.py'
       - 'scripts/ios_test_summary.py'
-      - 'scripts/store/ios_release.py'
       - 'fuzz/**'
       - '.github/workflows/fuzz.yml'
   schedule:
@@ -46,7 +43,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [fuzz_release_notes, fuzz_release_gates, fuzz_build_selection, fuzz_test_summary]
+        target: [fuzz_test_summary]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
