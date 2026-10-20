@@ -1,130 +1,54 @@
-# Offline checks of the iOS release tooling: switch handling, build waiting and
-# selection, listing and screenshot inputs (with the pinned Pillow that makes the
-# RGB copies of screenshots storing alpha), the header and search results images,
-# the in-app purchase catalog, the pinned Python dependencies, and that a release
-# without RELEASE_NOTES.md still passes its pre-build checks. Never contacts App
-# Store Connect.
-name: Store release checks
+# Store checks: validates the store data, the store-release config and these callers
+# against the pinned store-release version. Never uploads anything. Safe to run anytime.
+# Rendered by `run.py callers render --platform checks`.
+name: Store checks
 
 on:
-  pull_request:
-    paths:
-      - 'scripts/store/**'
-      - 'scripts/release_notes.py'
-      - 'store/**'
-      - 'requirements-store.txt'
-      - 'RELEASE_NOTES.md'
-      - 'ios/PCMNotes/PCMNotes.xcodeproj/project.pbxproj'
-      - 'ios/PCMNotes/PCMNotes.storekit'
-      - 'ios/PCMNotes/PCMNotes/TipStore.swift'
-      - '.github/workflows/ios-release.yml'
-      - '.github/workflows/store-checks.yml'
   push:
     branches: [main]
     paths:
-      - 'scripts/store/**'
-      - 'scripts/release_notes.py'
-      - 'store/**'
-      - 'requirements-store.txt'
-      - 'RELEASE_NOTES.md'
-      - 'ios/PCMNotes/PCMNotes.xcodeproj/project.pbxproj'
-      - 'ios/PCMNotes/PCMNotes.storekit'
-      - 'ios/PCMNotes/PCMNotes/TipStore.swift'
-      - '.github/workflows/ios-release.yml'
-      - '.github/workflows/store-checks.yml'
+      - "store/**"
+      - "RELEASE_NOTES.md"
+      - "ios/PCMNotes/PCMNotes.xcodeproj/project.pbxproj"
+      - "ios/PCMNotes/PCMNotes.storekit"
+      - "ios/PCMNotes/PCMNotes/TipStore.swift"
+      - ".github/workflows/ios-release.yml"
+      - ".github/workflows/store-checks.yml"
+  pull_request:
+    paths:
+      - "store/**"
+      - "RELEASE_NOTES.md"
+      - "ios/PCMNotes/PCMNotes.xcodeproj/project.pbxproj"
+      - "ios/PCMNotes/PCMNotes.storekit"
+      - "ios/PCMNotes/PCMNotes/TipStore.swift"
+      - ".github/workflows/ios-release.yml"
+      - ".github/workflows/store-checks.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
 
-# A newer push to a pull request supersedes its older run; main keeps every run.
+# A newer push to a pull request cancels its older run; main and manual runs are never cancelled.
 concurrency:
   group: store-checks-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  store-checks:
+  checks:
+    uses: apoorvdarshan/store-release/.github/workflows/checks.yml@0b298d3e98267f8e98423b7b56c806c0c6f43f99 # v0.2.0
+    permissions:
+      contents: read
+
+  # One stable check name across store-release versions (not a required check in v0.2.0).
+  store-release:
+    needs: checks
+    if: ${{ always() }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
+    # It reads only the checks job's result: no token permission at all.
+    permissions: {}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          sparse-checkout-cone-mode: false
-          sparse-checkout: |
-            /scripts/
-            /store/
-            /ios/PCMNotes/PCMNotes.xcodeproj/project.pbxproj
-            /ios/PCMNotes/PCMNotes.storekit
-            /ios/PCMNotes/PCMNotes/TipStore.swift
-            /requirements-store.txt
-            /RELEASE_NOTES.md
-
-      - name: Print the iOS release switches
+      - name: Require the store checks to pass
         env:
-          IOS_RELEASE_AUTOMATION: ${{ vars.IOS_RELEASE_AUTOMATION }}
-          IOS_CREATE_VERSION: ${{ vars.IOS_CREATE_VERSION }}
-          IOS_UPLOAD_BUILD: ${{ vars.IOS_UPLOAD_BUILD }}
-          IOS_UPLOAD_LISTING: ${{ vars.IOS_UPLOAD_LISTING }}
-          IOS_UPLOAD_WHATS_NEW: ${{ vars.IOS_UPLOAD_WHATS_NEW }}
-          IOS_UPLOAD_SCREENSHOTS: ${{ vars.IOS_UPLOAD_SCREENSHOTS }}
-          IOS_UPLOAD_CREATIVE_ASSETS: ${{ vars.IOS_UPLOAD_CREATIVE_ASSETS }}
-          IOS_SUBMIT_REVIEW: ${{ vars.IOS_SUBMIT_REVIEW }}
-          IOS_PUBLIC_RELEASE: ${{ vars.IOS_PUBLIC_RELEASE }}
-          IOS_BUILD_POLL_SECONDS: ${{ vars.IOS_BUILD_POLL_SECONDS }}
-          IOS_BUILD_WAIT_MINUTES: ${{ vars.IOS_BUILD_WAIT_MINUTES }}
-        run: python3 scripts/store/print_gates.py
-
-      # PyJWT and Pillow, as the release jobs install them, so a broken pin (e.g. a
-      # Dependabot bump) fails here instead of in a release.
-      - name: Install the pinned store tooling
-        run: |
-          python3 -m venv "$RUNNER_TEMP/store-tools"
-          "$RUNNER_TEMP/store-tools/bin/python" -m pip install --disable-pip-version-check \
-            --require-hashes -r requirements-store.txt
-          echo "$RUNNER_TEMP/store-tools/bin" >> "$GITHUB_PATH"
-
-      # STORE_TESTS_NEED_PILLOW: the RGB screenshot copy tests fail instead of
-      # skipping when Pillow is missing.
-      - name: Test switches, build wait, listing, screenshots, creative assets and submission (offline)
-        env:
-          STORE_TESTS_NEED_PILLOW: "1"
-        run: python3 -m unittest -v scripts/store/test_ios_release.py
-
-      - name: Check the in-app purchase catalog against the app
-        run: python3 scripts/store/validate_catalog.py
-
-      - name: Check the listing and screenshots are upload-ready (dry run, no network)
-        run: |
-          UPLOAD_LISTING=true UPLOAD_SCREENSHOTS=true SUBMIT_IOS_REVIEW=true PUBLIC_RELEASE=false \
-            python3 scripts/store/asc_release.py --dry-run --build-id DRY-RUN --build-number 1
-          # The committed header and search results images: sizes, formats, no
-          # alpha. There are none yet; an empty folder means nothing to check.
-          if find store/creative/ios -type f \( -iname '*.png' -o -iname '*.jpg' -o -iname '*.jpeg' \) | grep -q .; then
-            UPLOAD_CREATIVE_ASSETS=true python3 scripts/store/asc_release.py --dry-run
-          fi
-          for script in scripts/store/ios_release.py scripts/store/asc_release.py \
-                        scripts/store/export_listing.py scripts/release_notes.py; do
-            python3 "$script" --help > /dev/null
-          done
-
-      # A missing RELEASE_NOTES.md means GitHub's generated notes, so the checks the
-      # iOS Release workflow runs before building must pass without it too. On a
-      # copy of this checkout without the file, run them as the release does: the
-      # offline tests without the repository listing and screenshot files, then
-      # the notes for a tag (to stdout before the build, to a file for the GitHub
-      # Release; an empty file means generated notes).
-      - name: Check a release still passes without RELEASE_NOTES.md
-        run: |
-          set -euo pipefail
-          tree="$RUNNER_TEMP/without-release-notes"
-          cp -R "$GITHUB_WORKSPACE" "$tree"
-          rm -f "$tree/RELEASE_NOTES.md"
-          cd "$tree"
-          STORE_TESTS_SKIP_REPOSITORY_FILES=1 python3 -m unittest scripts/store/test_ios_release.py
-          python3 scripts/release_notes.py v0.0.0 > /dev/null
-          python3 scripts/release_notes.py v0.0.0 --out "$RUNNER_TEMP/release-notes.md"
-          if [ -s "$RUNNER_TEMP/release-notes.md" ]; then
-            echo "error: expected empty notes (GitHub's generated notes) without RELEASE_NOTES.md" >&2
-            exit 1
-          fi
+          RESULT: ${{ needs.checks.result }}
+        run: test "$RESULT" = success

@@ -13,7 +13,9 @@ import random
 import unittest
 import unittest.mock
 
-TARGETS = ("fuzz_release_notes", "fuzz_release_gates", "fuzz_build_selection", "fuzz_test_summary")
+# The release-notes, switch and build-selection targets went with the code they
+# fuzzed (the release tooling, now in apoorvdarshan/store-release).
+TARGETS = ("fuzz_test_summary",)
 RUNS = 3000
 
 
@@ -43,43 +45,14 @@ class FuzzTargetsTest(unittest.TestCase):
                     module.TestOneInput(data)
 
     def test_targets_catch_broken_implementations(self) -> None:
-        notes = importlib.import_module("fuzz_release_notes")
-        gates = importlib.import_module("fuzz_release_gates")
-        builds = importlib.import_module("fuzz_build_selection")
         summary = importlib.import_module("fuzz_test_summary")
-        real_resolve_gates, real_check = gates.resolve_gates, summary.check
-
-        def first_section_body(text, tag):  # ignores repeated and empty sections
-            if text is None:
-                return None
-            for section in text.split("\n## ")[1:]:
-                title, _, body = section.partition("\n")
-                if title.strip() == tag:
-                    return body.strip() or None
-            return None
-
-        def manual_runs_publish(env, **kwargs):  # a manual run that uploads
-            plan = real_resolve_gates(env, **kwargs)
-            if kwargs["event"] == "workflow_dispatch":
-                plan = {**plan, "upload_build": True}
-            return plan
-
-        def first_valid_build(payload, **_):  # skips the identity checks
-            for row in payload.get("data") or []:
-                if (row.get("attributes") or {}).get("processingState") == "VALID":
-                    return builds.BuildState.READY, "ready", row
-            return builds.BuildState.WAITING, "waiting", None
+        real_check = summary.check
 
         def skips_pass(counts, **kwargs):  # treats skipped tests as passing
             cleaned = {kind: {r: n for r, n in results.items() if r != "Skipped"} for kind, results in counts.items()}
             return real_check(cleaned, **kwargs)
 
-        broken = (
-            (notes, "section_for", first_section_body),
-            (gates, "resolve_gates", manual_runs_publish),
-            (builds, "evaluate_builds", first_valid_build),
-            (summary, "check", skips_pass),
-        )
+        broken = ((summary, "check", skips_pass),)
         for module, name, replacement in broken:
             with self.subTest(target=module.__name__), unittest.mock.patch.object(module, name, replacement):
                 self.assertIsNotNone(first_failure(module), f"{module.__name__} missed a broken {name}")

@@ -1,5 +1,5 @@
 # Static analysis (SAST) with GitHub CodeQL's security and quality queries, for the
-# workflows, the website's JavaScript and the Python release, test and fuzz tooling.
+# workflows, the website's JavaScript and the Python test and fuzz tooling.
 # These run on every pull request, push to main and weekly, each with a sparse
 # checkout of only the files its language lives in. The Swift app is analysed by
 # codeql-swift.yml, which needs a macOS runner and a full Xcode build.

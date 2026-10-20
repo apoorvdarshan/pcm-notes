@@ -6,6 +6,7 @@
 # Monthly and grouped into one pull request per ecosystem and directory: a Swift
 # package bump, or a GitHub Actions bump that touches ios-tests.yml, runs the iOS
 # unit and UI tests on a macOS runner, once on the pull request and again on main.
+# The one exception is the store-release pins, which get a PR of their own (below).
 
 version: 2
 updates:
@@ -14,19 +15,24 @@ updates:
     schedule:
       interval: monthly
     groups:
+      # The release callers' pins (one SHA in ios-release.yml and store-checks.yml,
+      # with its "# vX.Y.Z" comment). Declared before the catch-all: a dependency
+      # joins the first group it matches, so a store-release bump always gets its
+      # own PR.
+      store-release:
+        patterns: ["apoorvdarshan/store-release*"]
       github-actions:
         patterns: ["*"]
+    # store-release pins run with the app's signing and App Store Connect
+    # credentials: a new release waits seven days before Dependabot proposes it.
+    # Security updates are never delayed by a cooldown.
+    cooldown:
+      default-days: 7
+      include: ["apoorvdarshan/store-release*"]
 
-  # The hash-pinned App Store Connect tooling (requirements-store.txt, compiled
-  # from requirements-store.in: PyJWT, and Pillow for the screenshots' RGB copies)
-  # that the release and store-check jobs install.
-  - package-ecosystem: pip
-    directory: /
-    schedule:
-      interval: monthly
-    groups:
-      store-tooling:
-        patterns: ["*"]
+  # The App Store Connect tooling and its hash-locked Python dependencies live in
+  # apoorvdarshan/store-release, which keeps them up to date; the store-release
+  # group above moves this repository to each new release.
 
   # The hash-pinned Atheris that the Fuzzing workflow installs (fuzz/requirements.txt).
   - package-ecosystem: pip

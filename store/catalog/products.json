@@ -1,5 +1,5 @@
 {
-  "$comment": "App Store products PCM Notes sells. A release submits only these, and only while App Store Connect has them READY_TO_SUBMIT (approved products are never resubmitted). Must match TipProductID in ios/PCMNotes/PCMNotes/TipStore.swift and ios/PCMNotes/PCMNotes.storekit (scripts/store/validate_catalog.py checks both).",
+  "$comment": "App Store products PCM Notes sells. A release submits only these, and only while App Store Connect has them READY_TO_SUBMIT (approved products are never resubmitted). Must match TipProductID in ios/PCMNotes/PCMNotes/TipStore.swift and ios/PCMNotes/PCMNotes.storekit (store-release's catalog check, run by Store checks, checks both).",
   "bundle_id": "com.apoorvdarshan.iitjee",
   "subscriptions": [],
   "consumables": [],

@@ -62,8 +62,10 @@ submit note pages or artwork.
   later builds reuse them.
 - **Website:** Node.js. `npm install`, then `npm run build` writes the site to
   `dist/`. Open the HTML files directly to preview.
-- **Scripts:** Python 3.11 or newer. The release tooling's pinned dependencies are
-  in `requirements-store.txt`; the fuzzers' are in `fuzz/requirements.txt`.
+- **Scripts:** Python 3.11 or newer. The fuzzers' pinned dependencies are in
+  `fuzz/requirements.txt`. The release tooling lives in
+  [apoorvdarshan/store-release](https://github.com/apoorvdarshan/store-release)
+  (see [store/README.md](store/README.md)).
 
 ### Code style
 
@@ -91,7 +93,7 @@ add a test that fails without the fix.
 |---|---|---|
 | App logic | Swift Testing unit tests in `ios/PCMNotes/PCMNotesTests/` | `bash scripts/test-ios.sh` |
 | User-visible flows | XCTest UI tests in `ios/PCMNotes/PCMNotesUITests/` | `bash scripts/test-ios.sh` |
-| Release tooling | `scripts/store/test_ios_release.py` | `python3 -m unittest -v scripts/store/test_ios_release.py` |
+| Store data and release config | `store/` and `store/store-release.toml`, checked by store-release | the commands in [store/README.md](store/README.md#checking-locally) |
 | Test-result checker | `scripts/test_ios_test_summary.py` | `python3 -m unittest scripts/test_ios_test_summary.py` |
 | Parsers of untrusted input | A fuzz target in `fuzz/` | `python3 -m unittest discover -s fuzz -p 'test_*.py'` |
 
@@ -104,7 +106,8 @@ pull requests, so you can also rely on the checks on your pull request.
 Pull requests run, depending on the files changed:
 
 - **iOS tests:** unit and UI tests on iPhone and iPad simulators;
-- **Store release checks:** offline tests of the release tooling;
+- **Store checks:** the store data, `store/store-release.toml` and the release
+  callers, checked against the pinned store-release version;
 - **CodeQL:** static analysis of the Python, JavaScript and workflow code (the
   Swift app is analysed weekly and for each release tag);
 - **Fuzzing:** the fuzz targets in `fuzz/` with Atheris;
