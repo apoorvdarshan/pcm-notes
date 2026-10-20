@@ -7,8 +7,10 @@ results.
 
 The listing lives in the repository: store/metadata/ios/<locale>/*.txt holds every
 App Store locale (exported from the live listing), and the screenshots are in
-store/metadata/screenshots/ios/<display size>/. Each operation only runs when its switch
-is on (see store/README.md); with every switch off this script does nothing.
+store/metadata/screenshots/ios/<display size>/. A screenshot that stores alpha is
+uploaded as an RGB copy (Pillow, requirements-store.txt); the committed file is
+never changed. Each operation only runs when its switch is on (see
+store/README.md); with every switch off this script does nothing.
 
 Submitting for review covers the App Store version and any Ready-to-Submit
 in-app purchases listed in store/catalog/products.json. They all join one draft
@@ -32,10 +34,10 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import io
 import json
 import os
 import re
-import shutil
 import struct
 import sys
 import tempfile
@@ -514,10 +516,15 @@ def validate_screenshots(root: Path = ROOT) -> None:
                 fail(f"{path} is {size[0]}x{size[1]}; {spec.display_type} accepts {accepted}")
         with_alpha = [path.name for path in files if asc_cli.image_has_alpha(path)]
         if with_alpha:
+            how = (
+                "they are uploaded as RGB copies, transparent pixels laid over black"
+                if try_import_pillow() is not None
+                else "they can stay while App Store Connect already holds them (checked before the build); "
+                f"to upload them, {PILLOW_HINT}"
+            )
             print(
                 f"note: the {spec.display_type} screenshots {', '.join(with_alpha)} have an alpha channel, "
-                "which asc refuses to upload; they can stay while App Store Connect already holds them "
-                "(checked before the build), but re-export changed screenshots as RGB"
+                f"which asc refuses to upload; {how}"
             )
 
 
@@ -575,19 +582,71 @@ def wait_for_screenshot_processing(
         sleep(poll_seconds)
 
 
+PILLOW_HINT = (
+    "install Pillow (pip install --require-hashes -r requirements-store.txt) so the upload can flatten "
+    "them into RGB copies"
+)
+
+
+def try_import_pillow():
+    try:
+        from PIL import Image  # type: ignore[import-untyped]
+
+        return Image
+    except ImportError:
+        return None
+
+
+def opaque_rgb(Image, img):
+    """The image without an alpha channel, transparent pixels laid over black.
+
+    App Store Connect (and asc) refuse screenshots that store alpha, even when
+    every pixel is opaque.
+    """
+    img = img.convert("RGBA")
+    canvas = Image.new("RGB", img.size, (0, 0, 0))
+    canvas.paste(img, mask=img.getchannel("A"))
+    return canvas
+
+
+def upload_png(path: Path) -> bytes:
+    """The bytes uploaded for a committed screenshot.
+
+    A PNG without alpha goes up as it is. One that stores alpha goes up as an
+    RGB copy (opaque_rgb), made in memory; the committed file is never changed.
+    """
+    raw = path.read_bytes()
+    if not asc_cli.image_has_alpha(path):
+        return raw
+    Image = try_import_pillow()
+    if Image is None:
+        fail(f"{path.name} has an alpha channel; {PILLOW_HINT}")
+    try:
+        with Image.open(io.BytesIO(raw)) as img:
+            flat = opaque_rgb(Image, img)
+    except (OSError, SyntaxError, ValueError) as exc:
+        fail(f"cannot flatten {path} into an RGB copy: {exc}")
+    out = io.BytesIO()
+    flat.save(out, format="PNG")
+    return out.getvalue()
+
+
 def alpha_problem(spec: ScreenshotSet, pngs: list[Path]) -> str | None:
-    """Why asc would refuse to upload these PNGs, or None."""
+    """Why these PNGs cannot be uploaded, or None.
+
+    asc refuses any PNG that stores alpha, so those go up as RGB copies, which
+    needs Pillow."""
     with_alpha = [path.name for path in pngs if asc_cli.image_has_alpha(path)]
-    if not with_alpha:
+    if not with_alpha or try_import_pillow() is not None:
         return None
     return (
         f"the {spec.display_type} screenshots {', '.join(with_alpha)} have an alpha channel, which asc refuses "
-        "to upload, and App Store Connect does not hold this set yet; re-export them as RGB PNGs"
+        f"to upload, and App Store Connect does not hold this set as committed; {PILLOW_HINT}"
     )
 
 
 def screenshot_upload_problems(live: dict[str, list[dict[str, Any]]], root: Path = ROOT) -> list[str]:
-    """Problems with the sets App Store Connect does not hold yet (they have to be uploaded).
+    """Problems with the sets App Store Connect does not hold as committed (they may have to be uploaded).
 
     A set App Store Connect already holds is left alone, whatever its format."""
     problems = []
@@ -624,8 +683,18 @@ def upload_screenshot_set(
     if len(pngs) > APP_SCREENSHOT_SET_MAX:
         fail(f"too many PNGs ({len(pngs)}) for {spec.display_type} (max {APP_SCREENSHOT_SET_MAX})")
 
-    wanted = [file_checksum(path.read_bytes()) for path in pngs]
-    if screenshot_checksums(live.get(spec.display_type) or []) == wanted:
+    current = screenshot_checksums(live.get(spec.display_type) or [])
+    if current == [file_checksum(path.read_bytes()) for path in pngs]:
+        print(f"  {spec.display_type}: the {len(pngs)} screenshots already match")
+        return False
+    problem = alpha_problem(spec, pngs)
+    if problem:
+        fail(problem)
+    # What asc is handed: the PNGs, with any that store alpha as RGB copies. The
+    # set also matches when App Store Connect already holds those copies.
+    staged = [upload_png(path) for path in pngs]
+    wanted = [file_checksum(raw) for raw in staged]
+    if current == wanted:
         print(f"  {spec.display_type}: the {len(pngs)} screenshots already match")
         return False
     if frozen_state:
@@ -633,17 +702,18 @@ def upload_screenshot_set(
             f"{spec.display_type} screenshots differ from App Store Connect, but the version "
             f"is already {frozen_state}, so its screenshots can no longer change"
         )
-    problem = alpha_problem(spec, pngs)
-    if problem:
-        fail(problem)
     # asc uploads every file in --path, so it gets a folder holding exactly
     # these PNGs (same names, so the same order). --replace deletes the set's
     # screenshots before uploading; asc uploads the files in name order and
     # waits for App Store Connect to process each one. If an upload fails
     # part-way, fix the error and re-run: the set is replaced again.
     with tempfile.TemporaryDirectory(prefix="asc-screenshots-") as staging:
-        for path in pngs:
-            shutil.copyfile(path, Path(staging) / path.name)
+        for path, raw in zip(pngs, staged):
+            (Path(staging) / path.name).write_bytes(raw)
+        # The last guard on what asc is handed: it refuses any PNG that stores alpha.
+        with_alpha = [path.name for path in pngs if asc_cli.image_has_alpha(Path(staging) / path.name)]
+        if with_alpha:
+            fail(f"the {spec.display_type} upload copies of {', '.join(with_alpha)} still have an alpha channel")
         call(
             asc,
             "screenshots", "upload", "--app", app_id, "--version-id", version_id, "--locale", locale,
