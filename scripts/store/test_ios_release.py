@@ -2293,20 +2293,18 @@ class LiveSubmitFlowTests(LiveFlowCase):
         self.assertEqual(flag(fake.writes()[-1], "--id"), "MINE")
         self.assertEqual(fake.items["OTHER"], other)
 
-    def test_a_ready_for_review_version_that_no_draft_holds_stops_before_any_write(self) -> None:
-        # READY_FOR_REVIEW says a draft holds the version; the only draft here does
-        # not. It is checked before the build is selected, so nothing at all is
-        # written: not this run's build, not the release type, not the review.
+    def test_a_ready_for_review_version_that_no_draft_holds_stops_before_writing_to_review(self) -> None:
+        # READY_FOR_REVIEW says a draft holds the version; the only draft here does not.
         held = [item("P", "inAppPurchaseVersion", "IAPV-medium-1")]
-        fake = self.fake(state="READY_FOR_REVIEW", ready_tips=("medium",), drafts=("D1",), draft_items={"D1": held})
+        fake = self.fake(state="READY_FOR_REVIEW", attached="B9", ready_tips=("medium",), drafts=("D1",),
+                         draft_items={"D1": held})
         code, _ = self.run_main(fake, real_products=True)
         self.assertEqual(code, 1)
-        self.assertEqual(fake.writes(), [])
-        self.assertEqual(fake.attached, "OLD")
-        fake = self.fake(state="READY_FOR_REVIEW", drafts=())
+        self.assertEqual(fake.review_writes(), [])
+        fake = self.fake(state="READY_FOR_REVIEW", attached="B9", drafts=())
         code, _ = self.run_main(fake, real_products=True)
         self.assertEqual(code, 1)
-        self.assertEqual(fake.writes(), [])
+        self.assertEqual(fake.review_writes(), [])
 
     def test_asc_placeholders_for_missing_relationships_count_as_absent(self) -> None:
         # asc writes a missing relationship as {"type": "", "id": ""}.
@@ -2648,15 +2646,6 @@ class CreativeAssetTests(LiveFlowCase):
         self.assertEqual({flag(c, "--item-type") for c in review if c[:2] == ("review", "items-add")},
                          {"appAssetLibraryImages"})
         self.assertFalse([c for c in fake.writes() if c[:2] == ("localizations", "placements")])
-
-    def test_an_interrupted_upload_is_uploaded_again(self) -> None:
-        # asc never deletes the reservation an interrupted upload leaves behind.
-        fake = self.fake(library=[self.image("STALE", "header", "AWAITING_UPLOAD")])
-        self.assertEqual(self.run_creative(fake), 0)
-        uploads = [Path(flag(c, "--file")).name for c in fake.writes() if c[:3] == ("asset-library", "images", "upload")]
-        self.assertEqual(uploads, ["header.png", "search-results.png"])
-        added = [flag(c, "--item-id") for c in fake.writes() if c[:2] == ("review", "items-add")]
-        self.assertNotIn("STALE", added)
 
     def test_images_in_review_are_neither_reuploaded_nor_placed(self) -> None:
         fake = self.fake(library=[self.image("H", "header", "WAITING_FOR_REVIEW"),

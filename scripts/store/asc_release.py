@@ -71,9 +71,7 @@ CREATIVE_EXTENSIONS = {".png", ".jpg", ".jpeg"}
 # finished without approval.
 CREATIVE_PENDING_STATES = {"WAITING_FOR_REVIEW", "IN_REVIEW", "ACCEPTED"}
 CREATIVE_UNSUBMITTED_STATES = {"PREPARE_FOR_SUBMISSION", "READY_FOR_REVIEW", "COMPLETE", "UPLOAD_COMPLETE"}
-# AWAITING_UPLOAD is a reservation an interrupted upload left behind; it is
-# ignored like a failed one, so the next run uploads the image again.
-CREATIVE_DEAD_STATES = {"REJECTED", "FAILED", "ARCHIVED", "AWAITING_UPLOAD"}
+CREATIVE_DEAD_STATES = {"REJECTED", "FAILED", "ARCHIVED"}
 EDITABLE_VERSION_STATES = {
     "PREPARE_FOR_SUBMISSION",
     "DEVELOPER_REJECTED",
@@ -1631,17 +1629,6 @@ def main() -> None:
     sync_metadata()
 
     if do_submit:
-        # Pick and check the draft before any write (read-only), so a run that has
-        # to stop here leaves the version and its build untouched.
-        submission_id = find_draft_submission(asc, app_id, version_id)
-        if state == "READY_FOR_REVIEW" and (
-            submission_id is None
-            or not any(related_id(item, "appStoreVersion") == version_id for item in submission_items(asc, submission_id))
-        ):
-            fail(
-                f"version {args.version} is READY_FOR_REVIEW, but no draft review submission holds it; "
-                "remove the version from its submission in App Store Connect and rerun"
-            )
         print("selecting this run's build…")
         select_build(asc, version_id, args.build_id, args.version, args.build_number)
         set_release_type(
@@ -1654,6 +1641,16 @@ def main() -> None:
         verify_build(asc, args.build_id, args.version, args.build_number)
         confirm_selected_build(asc, version_id, args.build_id)
         print("adding in-app purchases / subscriptions to the review submission…")
+        submission_id = find_draft_submission(asc, app_id, version_id)
+        if state == "READY_FOR_REVIEW" and (
+            submission_id is None
+            or not any(related_id(item, "appStoreVersion") == version_id for item in submission_items(asc, submission_id))
+        ):
+            # Stop before anything is added, so a rerun is not stuck on the wrong draft.
+            fail(
+                f"version {args.version} is READY_FOR_REVIEW, but no draft review submission holds it; "
+                "remove the version from its submission in App Store Connect and rerun"
+            )
         submission_id = submission_id or create_draft_submission(asc, app_id)
         try:
             result = submit_in_app_purchases(

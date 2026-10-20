@@ -41,11 +41,10 @@ vX.Y.Z tag ─► offline store-tooling tests ─► resolve switches (the tag m
                            (only fields that differ are sent)
        IOS_UPLOAD_CREATIVE_ASSETS ─► header / search results images: upload and
                                      review new ones on their own, place approved ones
-       IOS_SUBMIT_REVIEW ─► pick the version's draft review submission (read-only)
-                         ─► select this run's build, read it back, set release type
+       IOS_SUBMIT_REVIEW ─► select this run's build, read it back, set release type
                          ─► recheck build + selection ─► add any Ready-to-Submit
-                            in-app purchases and the version to that draft (or a
-                            new one) ─► check it holds nothing else ─► submit it once
+                            in-app purchases and the version to one draft review
+                            submission ─► check it holds nothing else ─► submit it once
   └─ GitHub Release (only if every enabled step succeeded)
 ```
 
@@ -250,11 +249,10 @@ image of the wrong size or format, or one with an alpha channel stops the run
 before anything is built.
 
 An image is matched in the Asset Library by file name and size, so give a changed
-image a new file name. A reservation left by an interrupted upload
-(`AWAITING_UPLOAD`) is ignored and the image is uploaded again. Apple reviews each
-new image on its own (PCM Notes already has an approved version), and a later run
-places it once it is approved, swapping out an earlier placement; a rejected image
-stops the run with Apple's reason. A retry finishes the image review submission an earlier attempt left
+image a new file name. Apple reviews each new image on its own (PCM Notes already
+has an approved version), and a later run places it once it is approved,
+swapping out an earlier placement; a rejected image stops the run with Apple's
+reason. A retry finishes the image review submission an earlier attempt left
 behind instead of starting another. While the version is in a draft review
 submission or waits for review, nothing is uploaded, sent to review or placed: a
 new or not yet submitted image stops the run, but an image approved in the
@@ -301,10 +299,8 @@ submitted only when it holds this version and nothing but versions of catalog
 products; anything else stops the run. The draft that already holds this version
 is reused; otherwise only a draft holding no app version is, so another version's
 draft is never touched, and drafts holding creative images belong to those
-images' own review. The draft is picked and checked before anything is written, so
-a *Ready for Review* version that no draft holds stops the run with nothing
-changed, not even this run's build selection. A re-run that has no product to send
-creates no draft.
+images' own review. A *Ready for Review* version that no draft holds stops the run
+before anything is added. A re-run that has no product to send creates no draft.
 [`validate_catalog.py`](../scripts/store/validate_catalog.py) keeps the catalog in
 line with `TipProductID` in `TipStore.swift` and `ios/PCMNotes/PCMNotes.storekit`.
 RevenueCat records the tips; there is nothing to sync, so there is no
