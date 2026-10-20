@@ -17,16 +17,6 @@ updates:
       github-actions:
         patterns: ["*"]
 
-  # The hash-pinned App Store Connect tooling (requirements-store.txt, compiled
-  # from requirements-store.in) that the release and store-check jobs install.
-  - package-ecosystem: pip
-    directory: /
-    schedule:
-      interval: monthly
-    groups:
-      store-tooling:
-        patterns: ["*"]
-
   # The hash-pinned Atheris that the Fuzzing workflow installs (fuzz/requirements.txt).
   - package-ecosystem: pip
     directory: /fuzz
