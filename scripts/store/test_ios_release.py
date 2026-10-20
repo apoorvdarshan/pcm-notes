@@ -2723,6 +2723,19 @@ class CreativeAssetTests(LiveFlowCase):
         self.assertEqual(flag(fake.writes()[-1], "--id"), "SUB-NEW")
         self.assertEqual(fake.items["VERSION"], [item("X", "appStoreVersion", "V1")])
 
+    def test_images_and_the_version_go_to_review_in_separate_submissions(self) -> None:
+        # An empty draft left by an earlier attempt is finished with the images;
+        # the version then gets a draft of its own that holds only the version.
+        fake = self.fake()
+        code, _ = self.run_main(fake, {**self.ENV, "SUBMIT_IOS_REVIEW": "true"}, real_products=True,
+                                argv=["--version", VERSION, "--build-id", "B9", "--build-number", "8",
+                                      "--creative-dir", str(self.dir)])
+        self.assertEqual(code, 0)
+        submitted = [flag(c, "--id") for c in fake.writes() if c[:2] == ("review", "submissions-submit")]
+        self.assertEqual(submitted, ["SUB1", "SUB-NEW"])
+        self.assertEqual({rel for i in fake.items["SUB1"] for rel in i["relationships"]}, {"appAssetLibraryImage"})
+        self.assertEqual(fake.items["SUB-NEW"], [item("ITEM-V1", "appStoreVersion", "V1")])
+
     def test_a_creative_submission_with_other_items_is_not_submitted(self) -> None:
         fake = self.fake(drafts=())
         fake_run = fake.run
