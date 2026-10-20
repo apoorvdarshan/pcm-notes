@@ -1296,6 +1296,27 @@ class PreflightTests(unittest.TestCase):
         self.assertEqual(fake.writes(), [], "the preflight never writes")
         return code, out.getvalue()
 
+    def test_versions_the_store_step_can_use_pass(self) -> None:
+        held = {"SUB1": [item("I", "appStoreVersion", "V1")]}
+        for state in sorted(asc_release.SUBMITTABLE_VERSION_STATES):
+            with self.subTest(state=state):
+                fake = FakeAsc(state=state, draft_items=held)
+                code, output = self.run_preflight(fake, "--listing", "--whats-new", "--submit")
+                self.assertEqual(code, 0, output)
+                self.assertIn(f"exists ({state})", output)
+
+    def test_a_ready_for_review_version_needs_its_draft_before_the_build(self) -> None:
+        other = [item("P", "inAppPurchaseVersion", "IAPV-small-1")]
+        for drafts, items in (((), {}), (("D1",), {"D1": other})):
+            fake = FakeAsc(state="READY_FOR_REVIEW", drafts=drafts, draft_items=items)
+            with self.subTest(drafts=drafts):
+                code, output = self.run_preflight(fake, "--submit")
+                self.assertEqual(code, 1)
+                self.assertIn("no draft review submission holds it", output)
+        # Without review submission the draft does not matter.
+        code, output = self.run_preflight(FakeAsc(state="READY_FOR_REVIEW", drafts=()), "--listing")
+        self.assertEqual(code, 0, output)
+
     def test_cli_is_read_only_and_reports_problems(self) -> None:
         code, output = self.run_preflight(FakeAsc(state="READY_FOR_SALE", version_locales={"en-US"}), "--listing")
         self.assertEqual(code, 1)
@@ -2282,6 +2303,21 @@ class LiveSubmitFlowTests(LiveFlowCase):
         self.assertEqual(flag(fake.writes()[-1], "--id"), "SUB-NEW")
         self.assertEqual(fake.items["THEIRS"], theirs)
 
+    def test_a_stopped_submit_leaves_the_listing_text_alone_too(self) -> None:
+        # Text stays editable in READY_FOR_REVIEW, so the draft check must come
+        # before the listing update, not just before the build selection.
+        fake = self.fake(state="READY_FOR_REVIEW", drafts=(), differ=("listing", "app_info", "whats_new"))
+        code, _ = self.run_main(fake, LIVE_SWITCHES, real_products=True)
+        self.assertEqual(code, 1)
+        self.assertEqual(fake.writes(), [])
+        # The same text goes out once a draft holds the version.
+        fake = self.fake(state="READY_FOR_REVIEW", attached="B9", release_type="MANUAL",
+                         differ=("listing", "app_info", "whats_new"), draft_items={"SUB1": [item("V", "appStoreVersion", "V1")]})
+        code, _ = self.run_main(fake, LIVE_SWITCHES, real_products=True)
+        self.assertEqual(code, 0)
+        self.assertEqual([c[:2] for c in fake.writes()], [("localizations", "update"), ("localizations", "update"),
+                                                         ("review", "submissions-submit")])
+
     def test_the_draft_holding_this_version_is_chosen_over_others(self) -> None:
         other = [item("P", "inAppPurchaseVersion", "IAPV-small-1")]
         mine = [item("V", "appStoreVersion", "V1")]
@@ -2779,17 +2815,33 @@ class CreativeAssetTests(LiveFlowCase):
         self.assertEqual(fake.items["VERSION"], [item("X", "appStoreVersion", "V1")])
 
     def test_images_and_the_version_go_to_review_in_separate_submissions(self) -> None:
-        # An empty draft left by an earlier attempt is finished with the images;
-        # the version then gets a draft of its own that holds only the version.
+        # The empty draft left by an earlier attempt (SUB1) was chosen for the
+        # version before any write; the images get a submission of their own.
         fake = self.fake()
         code, _ = self.run_main(fake, {**self.ENV, "SUBMIT_IOS_REVIEW": "true"}, real_products=True,
                                 argv=["--version", VERSION, "--build-id", "B9", "--build-number", "8",
                                       "--creative-dir", str(self.dir)])
         self.assertEqual(code, 0)
         submitted = [flag(c, "--id") for c in fake.writes() if c[:2] == ("review", "submissions-submit")]
-        self.assertEqual(submitted, ["SUB1", "SUB-NEW"])
-        self.assertEqual({rel for i in fake.items["SUB1"] for rel in i["relationships"]}, {"appAssetLibraryImage"})
-        self.assertEqual(fake.items["SUB-NEW"], [item("ITEM-V1", "appStoreVersion", "V1")])
+        self.assertEqual(submitted, ["SUB-NEW", "SUB1"])
+        self.assertEqual({rel for i in fake.items["SUB-NEW"] for rel in i["relationships"]}, {"appAssetLibraryImage"})
+        self.assertEqual(fake.items["SUB1"], [item("ITEM-V1", "appStoreVersion", "V1")])
+
+    def test_images_never_take_the_empty_draft_the_version_chose(self) -> None:
+        # The version's draft is picked first; an empty leftover draft goes to the
+        # version, and the images get a submission of their own.
+        fake = self.fake(drafts=("EMPTY",), draft_items={"EMPTY": []})
+        code, _ = self.run_main(fake, {**self.ENV, "SUBMIT_IOS_REVIEW": "true"}, real_products=True,
+                                argv=["--version", VERSION, "--build-id", "B9", "--build-number", "8",
+                                      "--creative-dir", str(self.dir)])
+        self.assertEqual(code, 0)
+        submitted = [flag(c, "--id") for c in fake.writes() if c[:2] == ("review", "submissions-submit")]
+        self.assertEqual(len(submitted), 2)
+        self.assertEqual(submitted[-1], "EMPTY")
+        image_items = {flag(c, "--submission") for c in fake.writes()
+                       if c[:2] == ("review", "items-add") and flag(c, "--item-type") == "appAssetLibraryImages"}
+        self.assertEqual(image_items, {submitted[0]})
+        self.assertNotIn("EMPTY", image_items)
 
     def test_a_creative_submission_with_other_items_is_not_submitted(self) -> None:
         fake = self.fake(drafts=())
