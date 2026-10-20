@@ -1,7 +1,8 @@
 # Offline checks of the iOS release tooling: switch handling, build waiting and
-# selection, listing and screenshot inputs, the in-app purchase catalog, the
-# pinned Python dependencies, and that a release without RELEASE_NOTES.md still
-# passes its pre-build checks. Never contacts App Store Connect.
+# selection, listing and screenshot inputs, the in-app purchase catalog, that the
+# pinned App Store Connect CLI (asc) still downloads with its pinned checksum, and
+# that a release without RELEASE_NOTES.md still passes its pre-build checks.
+# Never contacts App Store Connect.
 name: Store release checks
 
 on:
@@ -10,7 +11,6 @@ on:
       - 'scripts/store/**'
       - 'scripts/release_notes.py'
       - 'store/**'
-      - 'requirements-store.txt'
       - 'RELEASE_NOTES.md'
       - 'ios/PCMNotes/PCMNotes.xcodeproj/project.pbxproj'
       - 'ios/PCMNotes/PCMNotes.storekit'
@@ -23,7 +23,6 @@ on:
       - 'scripts/store/**'
       - 'scripts/release_notes.py'
       - 'store/**'
-      - 'requirements-store.txt'
       - 'RELEASE_NOTES.md'
       - 'ios/PCMNotes/PCMNotes.xcodeproj/project.pbxproj'
       - 'ios/PCMNotes/PCMNotes.storekit'
@@ -55,7 +54,6 @@ jobs:
             /ios/PCMNotes/PCMNotes.xcodeproj/project.pbxproj
             /ios/PCMNotes/PCMNotes.storekit
             /ios/PCMNotes/PCMNotes/TipStore.swift
-            /requirements-store.txt
             /RELEASE_NOTES.md
 
       - name: Print the iOS release switches
@@ -66,20 +64,21 @@ jobs:
           IOS_UPLOAD_LISTING: ${{ vars.IOS_UPLOAD_LISTING }}
           IOS_UPLOAD_WHATS_NEW: ${{ vars.IOS_UPLOAD_WHATS_NEW }}
           IOS_UPLOAD_SCREENSHOTS: ${{ vars.IOS_UPLOAD_SCREENSHOTS }}
+          IOS_UPLOAD_CREATIVE_ASSETS: ${{ vars.IOS_UPLOAD_CREATIVE_ASSETS }}
           IOS_SUBMIT_REVIEW: ${{ vars.IOS_SUBMIT_REVIEW }}
           IOS_PUBLIC_RELEASE: ${{ vars.IOS_PUBLIC_RELEASE }}
           IOS_BUILD_POLL_SECONDS: ${{ vars.IOS_BUILD_POLL_SECONDS }}
           IOS_BUILD_WAIT_MINUTES: ${{ vars.IOS_BUILD_WAIT_MINUTES }}
         run: python3 scripts/store/print_gates.py
 
-      - name: Install the pinned store tooling
+      # Proves the pinned release still downloads and matches its checksum, so a
+      # bad pin fails here instead of in a release.
+      - name: Install and check the pinned App Store Connect CLI (no store calls)
         run: |
-          python3 -m venv "$RUNNER_TEMP/store-tools"
-          "$RUNNER_TEMP/store-tools/bin/python" -m pip install --disable-pip-version-check \
-            --require-hashes -r requirements-store.txt
-          echo "$RUNNER_TEMP/store-tools/bin" >> "$GITHUB_PATH"
+          python3 scripts/store/asc_cli.py install --dest "$RUNNER_TEMP/asc-bin"
+          PATH="$RUNNER_TEMP/asc-bin:$PATH" python3 scripts/store/asc_cli.py check
 
-      - name: Test switches, build wait, listing, screenshots and submission (offline)
+      - name: Test switches, build wait, listing, screenshots, creative assets and submission (offline)
         run: python3 -m unittest -v scripts/store/test_ios_release.py
 
       - name: Check the in-app purchase catalog against the app
@@ -89,7 +88,7 @@ jobs:
         run: |
           UPLOAD_LISTING=true UPLOAD_SCREENSHOTS=true SUBMIT_IOS_REVIEW=true PUBLIC_RELEASE=false \
             python3 scripts/store/asc_release.py --dry-run --build-id DRY-RUN --build-number 1
-          for script in scripts/store/ios_release.py scripts/store/asc_release.py \
+          for script in scripts/store/ios_release.py scripts/store/asc_release.py scripts/store/asc_cli.py \
                         scripts/store/export_listing.py scripts/release_notes.py; do
             python3 "$script" --help > /dev/null
           done

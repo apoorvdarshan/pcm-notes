@@ -62,8 +62,10 @@ submit note pages or artwork.
   later builds reuse them.
 - **Website:** Node.js. `npm install`, then `npm run build` writes the site to
   `dist/`. Open the HTML files directly to preview.
-- **Scripts:** Python 3.11 or newer. The release tooling's pinned dependencies are
-  in `requirements-store.txt`; the fuzzers' are in `fuzz/requirements.txt`.
+- **Scripts:** Python 3.11 or newer. The release tooling uses only the standard
+  library; it reaches App Store Connect through the App Store Connect CLI (`asc`),
+  pinned and checksum-verified by `scripts/store/asc_cli.py`. The fuzzers'
+  dependencies are in `fuzz/requirements.txt`.
 
 ### Code style
 
