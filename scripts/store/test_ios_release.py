@@ -973,10 +973,12 @@ class TransientErrorTests(unittest.TestCase):
     def test_network_drops_reported_as_exit_1_are_retried(self) -> None:
         for detail in ('Get "https://api.appstoreconnect.apple.com/v1/builds": read tcp: connection reset by peer',
                        "dial tcp: lookup api.appstoreconnect.apple.com: no such host",
-                       "net/http: TLS handshake timeout", "unexpected EOF"):
+                       "net/http: TLS handshake timeout", "unexpected EOF",
+                       'Get "https://api.appstoreconnect.apple.com/v1/builds": EOF'):
             with self.subTest(detail=detail):
                 self.assertTrue(ios_release.is_transient_error(asc_cli.AscError(("builds", "list"), 1, detail)))
-        for detail in ("invalid character '<' looking for beginning of value", "build not found"):
+        for detail in ("invalid character '<' looking for beginning of value", "build not found",
+                       "geofence settings are invalid"):
             with self.subTest(detail=detail):
                 self.assertFalse(ios_release.is_transient_error(asc_cli.AscError(("builds", "list"), 1, detail)))
         # Only exit 1 carries a network failure; the same words never make an auth error transient.
