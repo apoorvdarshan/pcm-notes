@@ -594,9 +594,9 @@ def cmd_preflight(args: argparse.Namespace) -> None:
         and state in asc_release.SCREENSHOT_EDITABLE_VERSION_STATES
         and asc_release.PRIMARY_LOCALE not in missing_locales
     ):
-        # asc refuses to upload a PNG with an alpha channel, so a set the store step
-        # would have to replace must be RGB. A set App Store Connect already holds
-        # is left alone, whatever its format.
+        # asc refuses to upload a PNG with an alpha channel, so the store step
+        # uploads RGB copies of those, which needs Pillow. A set App Store Connect
+        # already holds is left alone, whatever its format.
         live = asc_release.live_screenshot_sets(
             client, app_id=app_id, version_id=version["id"], locale=asc_release.PRIMARY_LOCALE
         )

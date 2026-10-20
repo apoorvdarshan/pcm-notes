@@ -17,6 +17,22 @@ updates:
       github-actions:
         patterns: ["*"]
 
+  # The hash-pinned Pillow that flattens App Store screenshots storing alpha
+  # (requirements-store.txt, compiled from requirements-store.in), installed by
+  # the release jobs that upload screenshots and by the Store release checks.
+  - package-ecosystem: pip
+    directory: /
+    # Only the root-level files: Dependabot's pip support also reads requirements
+    # files one folder down, which would duplicate the /fuzz entry below. "*/**"
+    # is everything inside any folder.
+    exclude-paths:
+      - "*/**"
+    schedule:
+      interval: monthly
+    groups:
+      store-tooling:
+        patterns: ["*"]
+
   # The hash-pinned Atheris that the Fuzzing workflow installs (fuzz/requirements.txt).
   - package-ecosystem: pip
     directory: /fuzz
