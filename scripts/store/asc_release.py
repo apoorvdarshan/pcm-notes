@@ -864,14 +864,16 @@ def sync_creative_assets(
 def submit_creative_review(asc: asc_cli.Asc, app_id: str, images: list[tuple[str, dict[str, Any]]]) -> str:
     """Send not-yet-reviewed creative images to App Review in a submission of their own.
 
-    A draft an earlier attempt left behind holding only some of these images
-    (or nothing yet) is finished instead of starting another one.
+    A draft an earlier attempt left behind holding only some of these images is
+    finished instead of starting another one. An empty draft is never taken:
+    the version and its products may already have chosen it.
     """
     wanted = {image["id"] for _, image in images}
     submission_id = None
     for draft in draft_submission_ids(asc, app_id):
-        held = {related_id(item, "appAssetLibraryImage") for item in submission_items(asc, draft)}
-        if held <= wanted:
+        items = submission_items(asc, draft)
+        held = {related_id(item, "appAssetLibraryImage") for item in items}
+        if items and held <= wanted:
             submission_id = draft
             print(f"  finishing creative review submission {draft} from an earlier attempt")
             break
@@ -1002,23 +1004,6 @@ def create_draft_submission(asc: asc_cli.Asc, app_id: str) -> str:
     if not created.get("id"):
         fail("asc did not report the new review submission's id")
     return created["id"]
-
-
-def version_draft(asc: asc_cli.Asc, app_id: str, version_id: str, state: str, version_string: str) -> str | None:
-    """The draft review submission this version goes into, if one exists yet (read-only).
-
-    A READY_FOR_REVIEW version is already held by a draft; when no draft holds
-    it, the run stops here."""
-    submission_id = find_draft_submission(asc, app_id, version_id)
-    if state == "READY_FOR_REVIEW" and (
-        submission_id is None
-        or not any(related_id(item, "appStoreVersion") == version_id for item in submission_items(asc, submission_id))
-    ):
-        fail(
-            f"version {version_string} is READY_FOR_REVIEW, but no draft review submission holds it; "
-            "remove the version from its submission in App Store Connect and rerun"
-        )
-    return submission_id
 
 
 def get_or_create_draft_submission(asc: asc_cli.Asc, app_id: str, version_id: str | None = None) -> str:
@@ -1644,17 +1629,23 @@ def main() -> None:
         fail(
             f"version {args.version!r} cannot be submitted for review (state={state})"
         )
+    # Pick and check the version's draft before any write (text, screenshots,
+    # images or the build), so a run that has to stop here changes nothing.
+    submission_id: str | None = None
     if do_submit:
-        # Check the version's draft before any write (listing text, screenshots,
-        # images or the build), so a run that has to stop here changes nothing.
-        version_draft(asc, app_id, version_id, state, args.version)
+        submission_id = find_draft_submission(asc, app_id, version_id)
+        if state == "READY_FOR_REVIEW" and (
+            submission_id is None
+            or not any(related_id(item, "appStoreVersion") == version_id for item in submission_items(asc, submission_id))
+        ):
+            fail(
+                f"version {args.version} is READY_FOR_REVIEW, but no draft review submission holds it; "
+                "remove the version from its submission in App Store Connect and rerun"
+            )
 
     sync_metadata()
 
     if do_submit:
-        # Picked again, still read-only and before the build is touched: the
-        # creative review may have just finished an empty leftover draft.
-        submission_id = version_draft(asc, app_id, version_id, state, args.version)
         print("selecting this run's build…")
         select_build(asc, version_id, args.build_id, args.version, args.build_number)
         set_release_type(
