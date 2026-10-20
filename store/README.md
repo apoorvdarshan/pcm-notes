@@ -252,10 +252,11 @@ before anything is built.
 An image is matched in the Asset Library by file name and size, so give a changed
 image a new file name. A reservation left by an interrupted upload
 (`AWAITING_UPLOAD`) is ignored and the image is uploaded again. Images never take
-an empty leftover draft (the version may have chosen it); an unfinished draft
-holding only these images is finished instead of starting another. Apple reviews
-each new image on its own (PCM Notes already has an approved version), and a
-later run places it once it is approved, swapping out an earlier placement; a
+the draft the version and its products chose. An unfinished draft holding only
+these images is finished first, else an empty one, instead of starting another,
+so a rerun leaves no extra drafts. Apple reviews each new image on its own
+(PCM Notes already has an approved version), and a later run places it once it
+is approved, swapping out an earlier placement; a
 rejected image stops the run with Apple's reason. While the version is in a draft
 review submission or waits for review, nothing is uploaded, sent to review or
 placed: a new or not yet submitted image stops the run, but an image approved in
