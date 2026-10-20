@@ -2422,6 +2422,30 @@ class ScreenshotCopyTests(unittest.TestCase):
             quiet(asc_release.upload_screenshots, fake, version_id="V1")
         self.assertEqual(fake.writes(), [])
 
+    def test_a_copy_that_still_stores_alpha_or_is_not_a_complete_png_never_goes_up(self) -> None:
+        # The last guard on the upload path: should flattening ever leave alpha in a copy, or
+        # write an incomplete PNG, the run stops before any screenshot is written. Pillow's
+        # part is stood in for, so this runs without Pillow too.
+        (self.root / "shots" / "01.png").write_bytes(make_png(1290, 2796, 6))
+        cases = {
+            "unchanged RGBA": (make_png(1290, 2796, 6), "stores an alpha channel"),
+            "grey + alpha": (make_png(1290, 2796, 4), "stores an alpha channel"),
+            "rgb + tRNS": (make_png(1290, 2796, 2, chunks=((b"tRNS", b"\x00" * 6),)), "stores an alpha channel"),
+            "no IEND": (png_bytes(1290, 2796)[:-12], "not a readable PNG"),
+        }
+        for label, (flattened, message) in cases.items():
+            client = CapturingScreenshotClient([b"live"])
+            stderr = io.StringIO()
+            with self.subTest(label), \
+                    mock.patch.object(asc_release, "try_import_pillow", return_value=object()), \
+                    mock.patch.object(asc_release, "prepare_asc_png", return_value=flattened), \
+                    redirect_stdout(io.StringIO()), redirect_stderr(stderr), self.assertRaises(SystemExit):
+                asc_release.upload_screenshot_set(client, "LOC", self.SPEC, self.root)
+            self.assertIn("01.png", stderr.getvalue(), label)
+            self.assertIn(message, stderr.getvalue(), label)
+            self.assertFalse([c for c in client.calls if c[0] != "GET"], label)
+            self.assertEqual(client.sent, {}, label)
+
 
 @unittest.skipIf(PILLOW is None and not os.environ.get("STORE_TESTS_NEED_PILLOW"), "Pillow not installed")
 class RgbCopyTests(unittest.TestCase):
@@ -2941,6 +2965,21 @@ class CreativeAssetTests(unittest.TestCase):
                 self.assertEqual(self.run_main(fake), 0)
                 self.assertIn(("POST", "/appAssetLibraryImages"), fake.calls)
 
+    def test_an_image_is_matched_by_file_name_and_size(self) -> None:
+        # A library image with the header's file name but another size came from another file:
+        # the header is uploaded as a new image, and the other one is never placed.
+        other = self.image("OTHER", self.header, "APPROVED")
+        other["attributes"]["fileSize"] += 1
+        fake = CreativeFake(library=[other, self.image("S", self.search, "IN_REVIEW")])
+        self.assertEqual(self.run_main(fake), 0)
+        self.assertEqual([c for c in fake.writes() if c == ("POST", "/appAssetLibraryImages")],
+                         [("POST", "/appAssetLibraryImages")])
+        uploaded = [image for image in fake.library if image["id"] not in {"OTHER", "S"}]
+        self.assertEqual([image["attributes"]["fileSize"] for image in uploaded], [self.header.stat().st_size])
+        self.assertEqual(fake.placed, [])
+        self.assertEqual([related(i, "appAssetLibraryImage") for i in fake.items[fake.submitted[0]]],
+                         [uploaded[0]["id"]])
+
     def test_an_uploaded_image_still_processing_is_reviewed_once_ready(self) -> None:
         fake = CreativeFake(library=[self.image("H", self.header, "UPLOAD_COMPLETE"), self.image("S", self.search, "APPROVED")],
                             processing={"H": ["UPLOAD_COMPLETE", "COMPLETE", "PREPARE_FOR_SUBMISSION"]})
@@ -3080,6 +3119,9 @@ class CreativeAssetTests(unittest.TestCase):
             (self.search, creative_png(1920, 1280, 4), "search.png"),
             (self.search, make_png(1920, 1280, 2, chunks=((b"tRNS", b"\x00" * 6),)), "search.png"),
             (self.search, jpeg(4000, 2666), "search.jpg"),
+            # The search slot takes both formats, so only the name check stops these.
+            (self.search, jpeg(1920, 1280), "search.png"),
+            (self.search, creative_png(1920, 1280), "search.jpg"),
             (self.search, b"GIF89a", "search.png"),
             # Truncated or corrupt files with the right header fail too.
             (self.header, creative_png(3840, 1646)[:-12], "header.png"),
