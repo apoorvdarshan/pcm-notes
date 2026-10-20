@@ -1,4 +1,4 @@
 # Pillow flattens App Store screenshots that store alpha into RGB copies for
 # upload (asc refuses any PNG with an alpha channel). Compiled, with hashes, into
 # requirements-store.txt.
-Pillow==12.3.0
+Pillow==13.0.0
