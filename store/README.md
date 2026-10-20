@@ -243,9 +243,10 @@ store/creative/ios/
 ```
 
 (Apple also accepts one 5244×2950 PNG for either slot.) A slot may stay empty,
-but with the switch on at least one image is required, and more than one image in
-a slot, or an image with an alpha channel, fails the run before anything is
-uploaded.
+but with the switch on at least one image is required. Sizes, formats and alpha
+are checked with the other local inputs, so more than one image in a slot, an
+image of the wrong size or format, or one with an alpha channel stops the run
+before anything is built.
 
 An image is matched in the Asset Library by file name and size, so give a changed
 image a new file name. Apple reviews each new image on its own (PCM Notes already
@@ -253,10 +254,11 @@ has an approved version), and a later run places it once it is approved,
 swapping out an earlier placement; a rejected image stops the run with Apple's
 reason. A retry finishes the image review submission an earlier attempt left
 behind instead of starting another. While the version is in a draft review
-submission or waits for review, nothing is uploaded, sent to review or placed:
-the step passes only when nothing needs to change. Apple's rules for these
-images: no prices, website addresses, other platforms or Apple badges, and no
-transparency.
+submission or waits for review, nothing is uploaded, sent to review or placed: a
+new or not yet submitted image stops the run, but an image approved in the
+meantime is not a mismatch, so a re-run passes and the image is placed once the
+version can be edited. Apple's rules for these images: no prices, website
+addresses, other platforms or Apple badges, and no transparency.
 
 ## Export compliance
 

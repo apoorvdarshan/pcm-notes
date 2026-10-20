@@ -1481,8 +1481,8 @@ class AscCliTests(unittest.TestCase):
             self.assertEqual(code, 1)
             self.assertIn("no header or search results image", output)
             (Path(tmp) / "header").mkdir()
-            (Path(tmp) / "header" / "a.png").write_bytes(b"x")
-            (Path(tmp) / "header" / "b.png").write_bytes(b"y")
+            (Path(tmp) / "header" / "a.png").write_bytes(png_bytes(3840, 1646))
+            (Path(tmp) / "header" / "b.png").write_bytes(png_bytes(3840, 1646))
             code, output = self.run_cli({"UPLOAD_CREATIVE_ASSETS": "true"}, "--creative-dir", tmp)
             self.assertEqual(code, 1)
             self.assertIn("takes one image", output)
@@ -1714,6 +1714,13 @@ def png_bytes(width: int, height: int, *, color_type: int = 2, trns: bool = Fals
     ihdr = struct.pack(">IIBBBBB", width, height, 8, color_type, 0, 0, 0)
     extra = chunk(b"tRNS", b"\x00\x00") if trns else b""
     return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr) + extra + chunk(b"IDAT", b"x") + chunk(b"IEND", b"")
+
+
+def jpeg_header(width: int, height: int) -> bytes:
+    """A JPEG with an APP0 segment and a baseline SOF0 frame header of the given size."""
+    app0 = b"\xff\xe0" + (16).to_bytes(2, "big") + b"JFIF\x00" + bytes(9)
+    sof0 = b"\xff\xc0" + (17).to_bytes(2, "big") + b"\x08" + height.to_bytes(2, "big") + width.to_bytes(2, "big") + bytes(12)
+    return b"\xff\xd8" + app0 + sof0 + b"\xff\xd9"
 
 
 class ScreenshotTests(unittest.TestCase):
@@ -2615,7 +2622,7 @@ class CreativeAssetTests(LiveFlowCase):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         self.dir = Path(tmp.name)
-        for folder, raw in (("header", b"header-image"), ("search-results", b"search-image")):
+        for folder, raw in (("header", png_bytes(3840, 1646)), ("search-results", png_bytes(3840, 2560) + b"search")):
             (self.dir / folder).mkdir()
             (self.dir / folder / f"{folder}.png").write_bytes(raw)
 
@@ -2670,6 +2677,43 @@ class CreativeAssetTests(LiveFlowCase):
             with self.subTest(state=state):
                 self.assertEqual(self.run_creative(fake), 1)
                 self.assertIn(("versions", "list"), [c[:2] for c in fake.calls], "stopped by the version's state")
+                self.assertEqual(fake.writes(), [])
+
+    def test_images_apple_would_refuse_fail_before_any_call(self) -> None:
+        cases = {
+            "header": [png_bytes(3840, 2160), jpeg_header(3840, 1646), b"not an image"],
+            "search-results": [png_bytes(3000, 2001), png_bytes(1800, 1200), jpeg_header(4000, 2666)],
+        }
+        for folder, contents in cases.items():
+            original = (self.dir / folder / f"{folder}.png").read_bytes()
+            for content in contents:
+                (self.dir / folder / f"{folder}.png").write_bytes(content)
+                fake = self.fake()
+                with self.subTest(folder=folder, content=content[:24]):
+                    self.assertEqual(self.run_creative(fake), 1)
+                    self.assertEqual(fake.calls, [])
+            (self.dir / folder / f"{folder}.png").write_bytes(original)
+
+    def test_sizes_apple_accepts_pass(self) -> None:
+        good = [("PRODUCT_PAGE_HEADER_ASSET", png_bytes(3840, 1646)),
+                ("PRODUCT_PAGE_HEADER_ASSET", png_bytes(5244, 2950)),
+                ("APP_STORE_SEARCH_RESULTS_ASSET", png_bytes(3840, 2560)),
+                ("APP_STORE_SEARCH_RESULTS_ASSET", jpeg_header(1920, 1280)),
+                ("APP_STORE_SEARCH_RESULTS_ASSET", png_bytes(5244, 2950))]
+        for placement, content in good:
+            path = self.dir / "probe"
+            path.write_bytes(content)
+            with self.subTest(placement=placement, content=content[:24]):
+                self.assertIsNone(asc_release.creative_size_problem(placement, path))
+        self.assertEqual(asc_release.image_dimensions(self.dir / "header" / "header.png"), ("png", 3840, 1646))
+
+    def test_an_approved_image_on_a_locked_version_waits_without_failing(self) -> None:
+        # Approval can land between the submit and a rerun of the store job.
+        library = [self.image("H", "header", "APPROVED"), self.image("S", "search-results", "IN_REVIEW")]
+        for state in ("WAITING_FOR_REVIEW", "READY_FOR_REVIEW"):
+            fake = self.fake(state=state, attached="B9", library=library)
+            with self.subTest(state=state):
+                self.assertEqual(self.run_creative(fake), 0)
                 self.assertEqual(fake.writes(), [])
 
     def test_an_image_with_alpha_fails_before_any_call(self) -> None:
