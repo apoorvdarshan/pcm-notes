@@ -5,7 +5,7 @@ PCM Notes' App Store releases run on
 shared set of reusable workflows and Python tooling. This repository's own release
 scripts (`scripts/store/` at `517b61a`) moved there unchanged as the `pcm-notes`
 flow, so a release does what it did before. Two thin caller workflows pin
-store-release by commit SHA, with the version in a `# vX.Y.Z` comment (v0.2.0 today):
+store-release by commit SHA, with the version in a `# vX.Y.Z` comment (v0.3.0 today):
 
 | Workflow | Trigger | What it does |
 |----------|---------|--------------|
@@ -19,15 +19,15 @@ releases: only a tag push does. The callers are rendered by store-release
 anything but a store-release release. Dependabot moves both pins to a new
 store-release release in one PR of its own, seven days after it is published.
 
-How the pipeline behaves is documented in store-release (v0.2.0):
-[PCM Notes' flow](https://github.com/apoorvdarshan/store-release/blob/v0.2.0/docs/flows.md#pcm-notes-iosflow--pcm-notes),
-[switches](https://github.com/apoorvdarshan/store-release/blob/v0.2.0/docs/switches.md),
-[secrets](https://github.com/apoorvdarshan/store-release/blob/v0.2.0/docs/secrets.md),
-[jobs and checks](https://github.com/apoorvdarshan/store-release/blob/v0.2.0/docs/workflows.md),
-[store plan](https://github.com/apoorvdarshan/store-release/blob/v0.2.0/docs/plan.md),
-[re-runs](https://github.com/apoorvdarshan/store-release/blob/v0.2.0/docs/rerun.md),
-[the config file](https://github.com/apoorvdarshan/store-release/blob/v0.2.0/docs/config.md)
-and [how a new release reaches this repository](https://github.com/apoorvdarshan/store-release/blob/v0.2.0/docs/release-process.md#how-apps-receive-a-release).
+How the pipeline behaves is documented in store-release (v0.3.0):
+[PCM Notes' flow](https://github.com/apoorvdarshan/store-release/blob/v0.3.0/docs/flows.md#pcm-notes-iosflow--pcm-notes),
+[switches](https://github.com/apoorvdarshan/store-release/blob/v0.3.0/docs/switches.md),
+[secrets](https://github.com/apoorvdarshan/store-release/blob/v0.3.0/docs/secrets.md),
+[jobs and checks](https://github.com/apoorvdarshan/store-release/blob/v0.3.0/docs/workflows.md),
+[store plan](https://github.com/apoorvdarshan/store-release/blob/v0.3.0/docs/plan.md),
+[re-runs](https://github.com/apoorvdarshan/store-release/blob/v0.3.0/docs/rerun.md),
+[the config file](https://github.com/apoorvdarshan/store-release/blob/v0.3.0/docs/config.md)
+and [how a new release reaches this repository](https://github.com/apoorvdarshan/store-release/blob/v0.3.0/docs/release-process.md#how-apps-receive-a-release).
 This file keeps only PCM Notes' own facts.
 
 **Xcode Cloud no longer builds PCM Notes:** its `Default` workflow and product were
@@ -100,9 +100,10 @@ The callers pass each reusable workflow exactly the secrets it declares, by name
 The CI Apple Development identity is certificate "Apple Development: Created via
 API", ID `NVNGDQGCKK`, **expiring 2027-10-14**. The same identity signs the archives
 of Fud AI, Verceltics, Abysm, Quit All, Scowld and Sesslet, because Apple allows one
-API-created development certificate per API key. Renewing it and giving another app
-repository a copy without the private key leaving GitHub:
-[the shared CI signing identity](https://github.com/apoorvdarshan/store-release/blob/v0.2.0/docs/secrets.md#the-shared-ci-signing-identity).
+API-created development certificate per API key. Renewing it:
+[the shared CI signing identity](https://github.com/apoorvdarshan/store-release/blob/v0.3.0/docs/provenance.md#facts-that-only-concern-the-six-apps);
+giving another app repository a copy without the private key leaving GitHub:
+[sharing one development identity](https://github.com/apoorvdarshan/store-release/blob/v0.3.0/docs/secrets.md#sharing-one-development-identity-across-your-apps).
 When it is replaced, update both `IOS_DEV_SIGNING_*` secrets here and in every
 repository listed above.
 
@@ -122,7 +123,7 @@ repository listed above.
    current switches, and anything that would stop it.
 5. Push the tag: `git tag -a vX.Y.Z -m "PCM Notes X.Y.Z" && git push origin vX.Y.Z`.
 6. If a later step fails, fix the cause and use **Re-run failed jobs**
-   ([re-runs](https://github.com/apoorvdarshan/store-release/blob/v0.2.0/docs/rerun.md)).
+   ([re-runs](https://github.com/apoorvdarshan/store-release/blob/v0.3.0/docs/rerun.md)).
 
 ## Listing metadata (the repository is the source of truth)
 
@@ -189,7 +190,7 @@ RevenueCat records the tips; there is nothing to sync.
 With Python 3.11 or later (CI uses 3.13), from the repository root:
 
 ```bash
-git clone --branch v0.2.0 https://github.com/apoorvdarshan/store-release ../store-release
+git clone --branch v0.3.0 https://github.com/apoorvdarshan/store-release ../store-release
 python3 -I -u ../store-release/run.py --app-root . config check --files
 python3 -I -u ../store-release/run.py --app-root . catalog check
 python3 -I -u ../store-release/run.py --app-root . release-notes --check-headings
