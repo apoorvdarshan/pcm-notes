@@ -71,7 +71,9 @@ CREATIVE_EXTENSIONS = {".png", ".jpg", ".jpeg"}
 # finished without approval.
 CREATIVE_PENDING_STATES = {"WAITING_FOR_REVIEW", "IN_REVIEW", "ACCEPTED"}
 CREATIVE_UNSUBMITTED_STATES = {"PREPARE_FOR_SUBMISSION", "READY_FOR_REVIEW", "COMPLETE", "UPLOAD_COMPLETE"}
-CREATIVE_DEAD_STATES = {"REJECTED", "FAILED", "ARCHIVED"}
+# AWAITING_UPLOAD is a reservation an interrupted upload left behind; it is
+# ignored like a failed one, so the next run uploads the image again.
+CREATIVE_DEAD_STATES = {"REJECTED", "FAILED", "ARCHIVED", "AWAITING_UPLOAD"}
 EDITABLE_VERSION_STATES = {
     "PREPARE_FOR_SUBMISSION",
     "DEVELOPER_REJECTED",
@@ -779,6 +781,7 @@ def sync_creative_assets(
     locale: str,
     creative_dir: Path,
     editable: bool,
+    reserved_draft: str | None = None,
 ) -> dict[str, str]:
     """Put the repository's header and search results images on the version.
 
@@ -855,25 +858,36 @@ def sync_creative_assets(
         outcomes[placement_type] = "placed"
         print(f"  {label}: placed {path.name} on the product page")
     if to_review:
-        submit_creative_review(asc, app_id, to_review)
+        submit_creative_review(asc, app_id, to_review, reserved_draft=reserved_draft)
     return outcomes
 
 
-def submit_creative_review(asc: asc_cli.Asc, app_id: str, images: list[tuple[str, dict[str, Any]]]) -> str:
+def submit_creative_review(
+    asc: asc_cli.Asc, app_id: str, images: list[tuple[str, dict[str, Any]]], *, reserved_draft: str | None = None
+) -> str:
     """Send not-yet-reviewed creative images to App Review in a submission of their own.
 
-    A draft an earlier attempt left behind holding only some of these images
-    (or nothing yet) is finished instead of starting another one.
+    A draft an earlier attempt left behind holding only some of these images is
+    finished first, else an empty one, instead of starting another, so reruns
+    leave no extra drafts. The draft this run chose for the version and its
+    products (reserved_draft) is never taken.
     """
     wanted = {image["id"] for _, image in images}
-    submission_id = None
+    partial = empty = None
     for draft in draft_submission_ids(asc, app_id):
+        if draft == reserved_draft:
+            continue
+        # A version or product item adds None, which is never wanted.
         held = {related_id(item, "appAssetLibraryImage") for item in submission_items(asc, draft)}
-        if held <= wanted:
-            submission_id = draft
-            print(f"  finishing creative review submission {draft} from an earlier attempt")
+        if not held:
+            empty = empty or draft
+        elif held <= wanted:
+            partial = draft
             break
-    if submission_id is None:
+    submission_id = partial or empty
+    if submission_id:
+        print(f"  finishing creative review submission {submission_id} from an earlier attempt")
+    else:
         submission = data(call(asc, "review", "submissions-create", "--app", app_id, "--platform", PLATFORM)) or {}
         submission_id = submission.get("id")
     if not submission_id:
@@ -1556,7 +1570,7 @@ def main() -> None:
     text_frozen = state if text_access == VERIFY else None
     shots_frozen = state if shot_access == VERIFY else None
 
-    def sync_metadata() -> None:
+    def sync_metadata(reserved_draft: str | None = None) -> None:
         if do_text:
             parts = [name for name, on in (("listing", do_listing), ("What's New", do_whats_new)) if on]
             verb = "checking" if text_frozen else "uploading"
@@ -1581,7 +1595,7 @@ def main() -> None:
             print(f"{verb} ASC product page header and search results images ({PRIMARY_LOCALE})…")
             sync_creative_assets(
                 asc, app_id=app_id, version_id=version_id, locale=PRIMARY_LOCALE, creative_dir=args.creative_dir,
-                editable=creative_access == EDIT,
+                editable=creative_access == EDIT, reserved_draft=reserved_draft,
             )
 
     if state == "WAITING_FOR_REVIEW":
@@ -1625,8 +1639,21 @@ def main() -> None:
         fail(
             f"version {args.version!r} cannot be submitted for review (state={state})"
         )
+    # Pick and check the version's draft before any write (text, screenshots,
+    # images or the build), so a run that has to stop here changes nothing.
+    submission_id: str | None = None
+    if do_submit:
+        submission_id = find_draft_submission(asc, app_id, version_id)
+        if state == "READY_FOR_REVIEW" and (
+            submission_id is None
+            or not any(related_id(item, "appStoreVersion") == version_id for item in submission_items(asc, submission_id))
+        ):
+            fail(
+                f"version {args.version} is READY_FOR_REVIEW, but no draft review submission holds it; "
+                "remove the version from its submission in App Store Connect and rerun"
+            )
 
-    sync_metadata()
+    sync_metadata(reserved_draft=submission_id)
 
     if do_submit:
         print("selecting this run's build…")
@@ -1641,16 +1668,6 @@ def main() -> None:
         verify_build(asc, args.build_id, args.version, args.build_number)
         confirm_selected_build(asc, version_id, args.build_id)
         print("adding in-app purchases / subscriptions to the review submission…")
-        submission_id = find_draft_submission(asc, app_id, version_id)
-        if state == "READY_FOR_REVIEW" and (
-            submission_id is None
-            or not any(related_id(item, "appStoreVersion") == version_id for item in submission_items(asc, submission_id))
-        ):
-            # Stop before anything is added, so a rerun is not stuck on the wrong draft.
-            fail(
-                f"version {args.version} is READY_FOR_REVIEW, but no draft review submission holds it; "
-                "remove the version from its submission in App Store Connect and rerun"
-            )
         submission_id = submission_id or create_draft_submission(asc, app_id)
         try:
             result = submit_in_app_purchases(
