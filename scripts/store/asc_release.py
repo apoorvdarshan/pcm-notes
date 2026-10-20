@@ -864,16 +864,14 @@ def sync_creative_assets(
 def submit_creative_review(asc: asc_cli.Asc, app_id: str, images: list[tuple[str, dict[str, Any]]]) -> str:
     """Send not-yet-reviewed creative images to App Review in a submission of their own.
 
-    A draft an earlier attempt left behind holding only some of these images is
-    finished instead of starting another one. An empty draft is never taken:
-    the version and its products may already have chosen it.
+    A draft an earlier attempt left behind holding only some of these images
+    (or nothing yet) is finished instead of starting another one.
     """
     wanted = {image["id"] for _, image in images}
     submission_id = None
     for draft in draft_submission_ids(asc, app_id):
-        items = submission_items(asc, draft)
-        held = {related_id(item, "appAssetLibraryImage") for item in items}
-        if items and held <= wanted:
+        held = {related_id(item, "appAssetLibraryImage") for item in submission_items(asc, draft)}
+        if held <= wanted:
             submission_id = draft
             print(f"  finishing creative review submission {draft} from an earlier attempt")
             break
@@ -1629,10 +1627,12 @@ def main() -> None:
         fail(
             f"version {args.version!r} cannot be submitted for review (state={state})"
         )
-    # Pick and check the version's draft before any write (text, screenshots,
-    # images or the build), so a run that has to stop here changes nothing.
-    submission_id: str | None = None
+
+    sync_metadata()
+
     if do_submit:
+        # Pick and check the draft before any write (read-only), so a run that has
+        # to stop here leaves the version and its build untouched.
         submission_id = find_draft_submission(asc, app_id, version_id)
         if state == "READY_FOR_REVIEW" and (
             submission_id is None
@@ -1642,10 +1642,6 @@ def main() -> None:
                 f"version {args.version} is READY_FOR_REVIEW, but no draft review submission holds it; "
                 "remove the version from its submission in App Store Connect and rerun"
             )
-
-    sync_metadata()
-
-    if do_submit:
         print("selecting this run's build…")
         select_build(asc, version_id, args.build_id, args.version, args.build_number)
         set_release_type(

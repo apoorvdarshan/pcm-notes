@@ -601,18 +601,6 @@ def cmd_preflight(args: argparse.Namespace) -> None:
             client, app_id=app_id, version_id=version["id"], locale=asc_release.PRIMARY_LOCALE
         )
         problems += asc_release.screenshot_upload_problems(live)
-    if args.submit and state == "READY_FOR_REVIEW":
-        # The store step needs the draft holding this version; finding out after
-        # the build and upload would be too late.
-        draft = asc_release.find_draft_submission(client, app_id, version["id"])
-        if draft is None or not any(
-            asc_release.related_id(item, "appStoreVersion") == version["id"]
-            for item in asc_release.submission_items(client, draft)
-        ):
-            problems.append(
-                f"App Store version {args.version} is READY_FOR_REVIEW, but no draft review submission holds it; "
-                "remove the version from its submission in App Store Connect and rerun"
-            )
     if problems:
         raise ReleaseError("; ".join(problems))
     print(f"App Store version {args.version} exists ({state}) and can take this release; nothing was changed")
