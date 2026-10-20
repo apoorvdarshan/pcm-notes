@@ -2685,11 +2685,10 @@ class CreativeFake(FakeAsc):
     def __init__(self, *, library: list[dict] | None = None, placements: dict[str, dict] | None = None,
                  drafts: list[str] | None = None, draft_items: dict[str, list[dict]] | None = None,
                  processing: dict[str, list[str]] | None = None, **kwargs) -> None:
-        super().__init__(**kwargs)
+        super().__init__(drafts=tuple(drafts or ()), **kwargs)
         self.library = [json_copy(image) for image in library or []]
         # placement id -> {"type", "image", "loc", "group", "state"}
         self.placements = {pid: dict(p) for pid, p in (placements or {}).items()}
-        self.drafts = list(drafts or [])
         self.items = {draft: list(rows) for draft, rows in (draft_items or {}).items()}
         # image id -> the states successive GETs of the image report while Apple processes it
         self.processing = {image_id: list(states) for image_id, states in (processing or {}).items()}
