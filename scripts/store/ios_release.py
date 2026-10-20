@@ -10,7 +10,9 @@ key=value lines to $GITHUB_OUTPUT when it is set):
   preflight     Read-only check, before anything is built, that the App Store
                 version this release edits exists, is in a state that can take
                 its listing, What's New, screenshots, creative assets and review
-                submission, and has a localization for every repository locale.
+                submission, and has a localization for every repository locale,
+                and that no screenshot set it would have to replace has an alpha
+                channel (asc refuses those).
   build-number  Next CFBundleVersion: max(project value, highest ASC build + 1).
   wait-build    Poll App Store Connect until the build uploaded by THIS run is
                 processed (VALID, unexpired, matching app/version/build number).
@@ -64,9 +66,16 @@ WAIT_MINUTES = ("IOS_BUILD_WAIT_MINUTES", 120, 10, 300)
 # Builds this old (relative to this run's upload) cannot be the one we uploaded.
 UPLOAD_CLOCK_SKEW_SECONDS = 600
 # asc exit codes worth retrying: HTTP 408 (18) and 429 (39), any 5xx (60-99), and
-# a call that ran out of time (124). asc itself retries a read on connection
-# errors and timeouts; auth, usage and not-found errors stop at once.
+# a call that ran out of time (124). Auth, usage and not-found errors stop at once.
 TRANSIENT_ASC_EXIT_CODES = {18, 39, 124} | set(range(60, 100))
+# asc retries only 429/503 itself and reports a dropped connection as a generic
+# exit 1, so the build wait also retries exit 1 when asc's message is one of
+# these network failures (the wait stays bounded by its deadline).
+NETWORK_ERROR = re.compile(
+    r"connection reset|connection refused|broken pipe|unexpected EOF|i/o timeout|TLS handshake timeout"
+    r"|no such host|network is unreachable|server misbehaving|context deadline exceeded|Client\.Timeout",
+    re.IGNORECASE,
+)
 
 
 class ReleaseError(Exception):
@@ -423,8 +432,11 @@ def wait_for_build(
 
 
 def is_transient_error(exc: BaseException) -> bool:
-    """App Store Connect overload, rate limits and timeouts are retried; anything else stops."""
-    return getattr(exc, "exit_code", None) in TRANSIENT_ASC_EXIT_CODES
+    """Apple server errors, rate limits, timeouts and network drops are retried; anything else stops."""
+    code = getattr(exc, "exit_code", None)
+    if code in TRANSIENT_ASC_EXIT_CODES:
+        return True
+    return code == 1 and bool(NETWORK_ERROR.search(str(exc)))
 
 
 def call_with_retries(
@@ -576,9 +588,21 @@ def cmd_preflight(args: argparse.Namespace) -> None:
         missing_locales=missing_locales,
         creative=args.creative,
     )
+    state = asc_release.attrs(version).get("appStoreState") if version is not None else None
+    if (
+        args.screenshots
+        and state in asc_release.SCREENSHOT_EDITABLE_VERSION_STATES
+        and asc_release.PRIMARY_LOCALE not in missing_locales
+    ):
+        # asc refuses to upload a PNG with an alpha channel, so a set the store step
+        # would have to replace must be RGB. A set App Store Connect already holds
+        # is left alone, whatever its format.
+        live = asc_release.live_screenshot_sets(
+            client, app_id=app_id, version_id=version["id"], locale=asc_release.PRIMARY_LOCALE
+        )
+        problems += asc_release.screenshot_upload_problems(live)
     if problems:
         raise ReleaseError("; ".join(problems))
-    state = asc_release.attrs(version).get("appStoreState")
     print(f"App Store version {args.version} exists ({state}) and can take this release; nothing was changed")
 
 
@@ -663,6 +687,14 @@ def main(argv: list[str] | None = None) -> None:
     try:
         args.func(args)
     except ReleaseError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        raise SystemExit(1) from None
+    except Exception as exc:
+        # An asc failure that is not retried (asc_cli.AscError, which carries asc's
+        # exit code and has the key and issuer IDs removed) ends the run with its
+        # message rather than a traceback.
+        if getattr(exc, "exit_code", None) is None:
+            raise
         print(f"error: {exc}", file=sys.stderr)
         raise SystemExit(1) from None
 

@@ -79,9 +79,13 @@ that runs it:
   job on validation runs, and `export_listing.py`. asc refuses a write in that
   mode before sending it (exit 6).
 - On failure the error keeps asc's exit code and drops the key and issuer IDs.
-  asc retries a read on connection errors and timeouts itself; the build wait
-  also retries asc's server-side exit codes (HTTP 5xx, 408, 429 and timeouts),
-  while auth, usage and not-found errors stop at once.
+  asc itself retries a read that hits HTTP 429 or 503 (`ASC_MAX_RETRIES=5`).
+  The build wait also retries asc's server-side exit codes (HTTP 5xx, 408, 429
+  and timeouts) and network drops, which asc reports as a generic exit 1 with a
+  connection error; auth, usage and not-found errors stop at once.
+- asc refuses to upload a PNG that stores an alpha channel or transparency (PNG
+  colour types 4 and 6, or a `tRNS` chunk), even when every pixel is opaque. See
+  [Screenshots](#screenshots) and [Creative assets](#creative-assets).
 
 The binary itself is still exported and uploaded by `xcodebuild`. To move to a
 newer asc, change `ASC_VERSION` and both `ASC_SHA256` values from that release's
@@ -219,6 +223,13 @@ set matches the repository.
 With the switch on and no PNGs in a directory, the run fails with a clear
 message.
 
+asc refuses to upload a PNG with an alpha channel, and the ten committed mockups
+are RGBA. They can stay as they are while App Store Connect already holds them,
+since a set that matches is never uploaded. A set that would have to be replaced
+must be RGB: the read-only check before the build refuses it otherwise (and the
+store step checks every set before replacing any), so export changed screenshots
+as RGB PNGs. The dry run prints a note for screenshots that have an alpha channel.
+
 ## Creative assets
 
 `IOS_UPLOAD_CREATIVE_ASSETS` puts the product page header and search results
@@ -233,7 +244,8 @@ store/creative/ios/
 
 (Apple also accepts one 5244×2950 PNG for either slot.) A slot may stay empty,
 but with the switch on at least one image is required, and more than one image in
-a slot fails the run before anything is uploaded.
+a slot, or an image with an alpha channel, fails the run before anything is
+uploaded.
 
 An image is matched in the Asset Library by file name and size, so give a changed
 image a new file name. Apple reviews each new image on its own (PCM Notes already
@@ -281,9 +293,12 @@ via `asc review items-add`), after the build recheck, and everything is submitte
 once. Apple's deprecated `inAppPurchaseSubmissions` endpoint, which sent a product
 to review on its own, is not used. Approved products (all four today) are never
 resubmitted, and products not in the catalog are ignored. A reused draft is
-submitted only when it holds nothing but this version and versions of catalog
-products; anything else stops the run. Drafts holding creative images belong to
-those images' own review and are never used for the version.
+submitted only when it holds this version and nothing but versions of catalog
+products; anything else stops the run. The draft that already holds this version
+is reused; otherwise only a draft holding no app version is, so another version's
+draft is never touched, and drafts holding creative images belong to those
+images' own review. A *Ready for Review* version that no draft holds stops the run
+before anything is added. A re-run that has no product to send creates no draft.
 [`validate_catalog.py`](../scripts/store/validate_catalog.py) keeps the catalog in
 line with `TipProductID` in `TipStore.swift` and `ios/PCMNotes/PCMNotes.storekit`.
 RevenueCat records the tips; there is nothing to sync, so there is no
