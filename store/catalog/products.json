@@ -1,5 +1,5 @@
 {
-  "$comment": "App Store products PCM Notes sells. A release submits only these, and only while App Store Connect has them READY_TO_SUBMIT (approved products are never resubmitted). Must match TipProductID in ios/PCMNotes/PCMNotes/TipStore.swift and ios/PCMNotes/PCMNotes.storekit (scripts/store/validate_catalog.py checks both).",
+  "$comment": "App Store products PCM Notes sells. A release submits only these, and only while App Store Connect has them READY_TO_SUBMIT (approved products are never resubmitted). With IOS_CREATE_PRODUCTS on, a v* tag creates every product App Store Connect does not have yet from its `ios` block (fields in store/README.md, Creating products); existing products are never changed. Must match TipProductID in ios/PCMNotes/PCMNotes/TipStore.swift and ios/PCMNotes/PCMNotes.storekit (scripts/store/validate_catalog.py checks both).",
   "bundle_id": "com.apoorvdarshan.iitjee",
   "subscriptions": [],
   "consumables": [],
@@ -9,6 +9,7 @@
       "apple_id": "6792611295",
       "reference_name": "Small Tip",
       "type": "consumable",
+      "platforms": ["ios"],
       "base_price_inr": "49"
     },
     {
@@ -16,6 +17,7 @@
       "apple_id": "6792611296",
       "reference_name": "Chai Tip",
       "type": "consumable",
+      "platforms": ["ios"],
       "base_price_inr": "99"
     },
     {
@@ -23,6 +25,7 @@
       "apple_id": "6792611495",
       "reference_name": "Study Fuel",
       "type": "consumable",
+      "platforms": ["ios"],
       "base_price_inr": "199"
     },
     {
@@ -30,6 +33,7 @@
       "apple_id": "6792611270",
       "reference_name": "Notebook Hero",
       "type": "consumable",
+      "platforms": ["ios"],
       "base_price_inr": "499"
     }
   ]
