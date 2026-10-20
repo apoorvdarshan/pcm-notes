@@ -1,9 +1,7 @@
 # Offline checks of the iOS release tooling: switch handling, build waiting and
-# selection, listing and screenshot inputs (with the pinned Pillow that flattens
-# screenshots storing alpha into RGB copies), the in-app purchase catalog, that the
-# pinned App Store Connect CLI (asc) still downloads with its pinned checksum, and
-# that a release without RELEASE_NOTES.md still passes its pre-build checks.
-# Never contacts App Store Connect.
+# selection, listing and screenshot inputs, the in-app purchase catalog, the
+# pinned Python dependencies, and that a release without RELEASE_NOTES.md still
+# passes its pre-build checks. Never contacts App Store Connect.
 name: Store release checks
 
 on:
@@ -59,35 +57,21 @@ jobs:
             /ios/PCMNotes/PCMNotes/TipStore.swift
             /requirements-store.txt
             /RELEASE_NOTES.md
-            /.github/workflows/ios-release.yml
-            /.github/workflows/store-checks.yml
 
       - name: Print the iOS release switches
         env:
           IOS_RELEASE_AUTOMATION: ${{ vars.IOS_RELEASE_AUTOMATION }}
           IOS_CREATE_VERSION: ${{ vars.IOS_CREATE_VERSION }}
-          IOS_CREATE_PRODUCTS: ${{ vars.IOS_CREATE_PRODUCTS }}
           IOS_UPLOAD_BUILD: ${{ vars.IOS_UPLOAD_BUILD }}
           IOS_UPLOAD_LISTING: ${{ vars.IOS_UPLOAD_LISTING }}
           IOS_UPLOAD_WHATS_NEW: ${{ vars.IOS_UPLOAD_WHATS_NEW }}
           IOS_UPLOAD_SCREENSHOTS: ${{ vars.IOS_UPLOAD_SCREENSHOTS }}
-          IOS_UPLOAD_CREATIVE_ASSETS: ${{ vars.IOS_UPLOAD_CREATIVE_ASSETS }}
           IOS_SUBMIT_REVIEW: ${{ vars.IOS_SUBMIT_REVIEW }}
           IOS_PUBLIC_RELEASE: ${{ vars.IOS_PUBLIC_RELEASE }}
           IOS_BUILD_POLL_SECONDS: ${{ vars.IOS_BUILD_POLL_SECONDS }}
           IOS_BUILD_WAIT_MINUTES: ${{ vars.IOS_BUILD_WAIT_MINUTES }}
         run: python3 scripts/store/print_gates.py
 
-      # Proves the pinned release still downloads and matches its checksum, so a
-      # bad pin fails here instead of in a release.
-      - name: Install and check the pinned App Store Connect CLI (no store calls)
-        run: |
-          python3 scripts/store/asc_cli.py install --dest "$RUNNER_TEMP/asc-bin"
-          PATH="$RUNNER_TEMP/asc-bin:$PATH" python3 scripts/store/asc_cli.py check
-
-      # Pillow flattens screenshots that store alpha into RGB copies for upload.
-      # Release jobs install this hash-locked set before uploading screenshots, so
-      # a broken pin (e.g. a Dependabot bump) fails here instead of in a release.
       - name: Install the pinned store tooling
         run: |
           python3 -m venv "$RUNNER_TEMP/store-tools"
@@ -95,9 +79,7 @@ jobs:
             --require-hashes -r requirements-store.txt
           echo "$RUNNER_TEMP/store-tools/bin" >> "$GITHUB_PATH"
 
-      - name: Test switches, build wait, listing, screenshots, creative assets and submission (offline)
-        env:
-          STORE_TESTS_NEED_PILLOW: "1"
+      - name: Test switches, build wait, listing, screenshots and submission (offline)
         run: python3 -m unittest -v scripts/store/test_ios_release.py
 
       - name: Check the in-app purchase catalog against the app
@@ -107,11 +89,10 @@ jobs:
         run: |
           UPLOAD_LISTING=true UPLOAD_SCREENSHOTS=true SUBMIT_IOS_REVIEW=true PUBLIC_RELEASE=false \
             python3 scripts/store/asc_release.py --dry-run --build-id DRY-RUN --build-number 1
-          for script in scripts/store/ios_release.py scripts/store/asc_release.py scripts/store/asc_cli.py \
-                        scripts/store/asc_products.py scripts/store/export_listing.py scripts/release_notes.py; do
+          for script in scripts/store/ios_release.py scripts/store/asc_release.py \
+                        scripts/store/export_listing.py scripts/release_notes.py; do
             python3 "$script" --help > /dev/null
           done
-          python3 scripts/store/asc_products.py create  # CREATE_IOS_PRODUCTS unset: skipped, no calls
 
       # A missing RELEASE_NOTES.md means GitHub's generated notes, so the checks the
       # iOS Release workflow runs before building must pass without it too. On a
