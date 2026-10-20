@@ -301,10 +301,12 @@ submitted only when it holds this version and nothing but versions of catalog
 products; anything else stops the run. The draft that already holds this version
 is reused; otherwise only a draft holding no app version is, so another version's
 draft is never touched, and drafts holding creative images belong to those
-images' own review. The draft is picked and checked before anything is written, so
-a *Ready for Review* version that no draft holds stops the run with nothing
-changed, not even this run's build selection. A re-run that has no product to send
-creates no draft.
+images' own review. The version's draft is checked before anything is written
+(listing text, screenshots, images or the build), so a *Ready for Review* version
+that no draft holds stops the run with nothing changed. The draft is picked again,
+read-only, right before the build is selected, because the creative review may
+have just finished an empty draft an earlier attempt left behind. A re-run that
+has no product to send creates no draft.
 [`validate_catalog.py`](../scripts/store/validate_catalog.py) keeps the catalog in
 line with `TipProductID` in `TipStore.swift` and `ios/PCMNotes/PCMNotes.storekit`.
 RevenueCat records the tips; there is nothing to sync, so there is no

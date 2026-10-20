@@ -2282,6 +2282,21 @@ class LiveSubmitFlowTests(LiveFlowCase):
         self.assertEqual(flag(fake.writes()[-1], "--id"), "SUB-NEW")
         self.assertEqual(fake.items["THEIRS"], theirs)
 
+    def test_a_stopped_submit_leaves_the_listing_text_alone_too(self) -> None:
+        # Text stays editable in READY_FOR_REVIEW, so the draft check must come
+        # before the listing update, not just before the build selection.
+        fake = self.fake(state="READY_FOR_REVIEW", drafts=(), differ=("listing", "app_info", "whats_new"))
+        code, _ = self.run_main(fake, LIVE_SWITCHES, real_products=True)
+        self.assertEqual(code, 1)
+        self.assertEqual(fake.writes(), [])
+        # The same text goes out once a draft holds the version.
+        fake = self.fake(state="READY_FOR_REVIEW", attached="B9", release_type="MANUAL",
+                         differ=("listing", "app_info", "whats_new"), draft_items={"SUB1": [item("V", "appStoreVersion", "V1")]})
+        code, _ = self.run_main(fake, LIVE_SWITCHES, real_products=True)
+        self.assertEqual(code, 0)
+        self.assertEqual([c[:2] for c in fake.writes()], [("localizations", "update"), ("localizations", "update"),
+                                                         ("review", "submissions-submit")])
+
     def test_the_draft_holding_this_version_is_chosen_over_others(self) -> None:
         other = [item("P", "inAppPurchaseVersion", "IAPV-small-1")]
         mine = [item("V", "appStoreVersion", "V1")]
