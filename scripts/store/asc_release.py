@@ -35,8 +35,10 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import struct
 import sys
+import tempfile
 import time
 from pathlib import Path
 from typing import Any, Callable, Iterable, NamedTuple
@@ -591,15 +593,19 @@ def upload_screenshot_set(
             f"{spec.display_type} screenshots differ from App Store Connect, but the version "
             f"is already {frozen_state}, so its screenshots can no longer change"
         )
-    # --replace deletes the set's screenshots before uploading; asc uploads the
-    # files in name order and waits for App Store Connect to process each one.
-    # If an upload fails part-way, fix the error and re-run: the set is
-    # replaced again.
-    call(
-        asc,
-        "screenshots", "upload", "--app", app_id, "--version-id", version_id, "--locale", locale,
-        "--path", str(root / spec.directory), "--device-type", spec.device_type, "--replace", "--confirm",
-    )
+    # asc uploads every file in --path, so it gets a folder holding exactly
+    # these PNGs (same names, so the same order). --replace deletes the set's
+    # screenshots before uploading; asc uploads the files in name order and
+    # waits for App Store Connect to process each one. If an upload fails
+    # part-way, fix the error and re-run: the set is replaced again.
+    with tempfile.TemporaryDirectory(prefix="asc-screenshots-") as staging:
+        for path in pngs:
+            shutil.copyfile(path, Path(staging) / path.name)
+        call(
+            asc,
+            "screenshots", "upload", "--app", app_id, "--version-id", version_id, "--locale", locale,
+            "--path", staging, "--device-type", spec.device_type, "--replace", "--confirm",
+        )
     shots = wait_for_screenshot_processing(
         asc, app_id=app_id, version_id=version_id, locale=locale, display_type=spec.display_type
     )

@@ -212,9 +212,10 @@ to the primary locale (other locales fall back to it). Sizes are checked before
 upload, and a set that already matches is left alone. Sets are compared by
 checksum, in order: App Store Connect keeps the file names a set was first
 uploaded with (the live sets are `image1.png` to `image5.png`). A changed set is
-replaced (`asc screenshots upload --replace`, which uploads the files in
-file-name order and waits for App Store Connect to process each one), then read
-back until every screenshot is processed and the set matches the repository.
+replaced (`asc screenshots upload --replace`, given a folder holding exactly the
+set's PNGs, which it uploads in file-name order, waiting for App Store Connect to
+process each one), then read back until every screenshot is processed and the
+set matches the repository.
 With the switch on and no PNGs in a directory, the run fails with a clear
 message.
 

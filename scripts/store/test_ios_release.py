@@ -591,6 +591,7 @@ class FakeAsc:
         self.created_drafts = 0
         self.build_reads = 0
         self.uploaded_sets: list[str] = []
+        self.uploaded_files: list[list[str]] = []
         self.calls: list[tuple[str, ...]] = []
 
     def writes(self) -> list[tuple[str, ...]]:
@@ -684,10 +685,13 @@ class FakeAsc:
         if head == ("screenshots", "upload"):
             device = flag(args, "--device-type")
             self.uploaded_sets.append(device)
+            # Like asc: every regular file in --path (not its subfolders), in name order.
+            files = sorted(p for p in Path(flag(args, "--path")).iterdir() if p.is_file())
+            self.uploaded_files.append([p.name for p in files])
             if self.uploads_land:
-                # --replace leaves the set holding exactly the files in --path, in name order.
+                # --replace leaves the set holding exactly those files.
                 kind = "APP_" + device
-                self.screenshots[kind] = [md5(p.read_bytes()) for p in sorted(Path(flag(args, "--path")).glob("*.png"))]
+                self.screenshots[kind] = [md5(p.read_bytes()) for p in files]
                 self.screenshot_states[kind] = self.upload_state
             return {}
         if head == ("asset-library", "view"):
@@ -1659,13 +1663,29 @@ class ScreenshotTests(unittest.TestCase):
             self.assertEqual(fake.writes(), [upload])
             self.assertEqual(upload[:2], ("screenshots", "upload"))
             self.assertEqual((flag(upload, "--app"), flag(upload, "--version-id"), flag(upload, "--locale"),
-                              flag(upload, "--device-type"), flag(upload, "--path")),
-                             (APP, "V1", "en-US", "IPHONE_67", str(root / "shots")))
+                              flag(upload, "--device-type")), (APP, "V1", "en-US", "IPHONE_67"))
             self.assertIn("--replace", upload)
             self.assertIn("--confirm", upload)
+            self.assertFalse(Path(flag(upload, "--path")).exists(), "the staging folder is removed afterwards")
+        self.assertEqual(fake.uploaded_files, [["01.png", "02.png"]])
         self.assertEqual(fake.screenshots["APP_IPHONE_67"], [md5(raw) for raw in new])
         # The set is read back after the upload.
         self.assertEqual(fake.calls[-1][:2], ("screenshots", "list"))
+
+    def test_only_the_sets_pngs_reach_asc(self) -> None:
+        # asc uploads every file in the folder it is given; other files next to
+        # the PNGs (or in a subfolder) must neither be uploaded nor fail the run.
+        images = [png_bytes(1290, 2796) + bytes([i]) for i in range(2)]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self.make_dir(tmp, images)
+            (root / "shots" / "00-notes.txt").write_text("not a screenshot")
+            (root / "shots" / "03-extra.jpg").write_bytes(b"jpeg")
+            (root / "shots" / "old").mkdir()
+            (root / "shots" / "old" / "01.png").write_bytes(png_bytes(1290, 2796))
+            fake = FakeAsc(screenshots={"APP_IPHONE_67": ["stale"]})
+            self.assertTrue(self.upload(fake, root))
+        self.assertEqual(fake.uploaded_files, [["01.png", "02.png"]])
+        self.assertEqual(fake.screenshots["APP_IPHONE_67"], [md5(raw) for raw in images])
 
     def test_processing_failure_stops(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
