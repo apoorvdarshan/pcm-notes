@@ -2843,6 +2843,22 @@ class CreativeAssetTests(LiveFlowCase):
         self.assertEqual(image_items, {submitted[0]})
         self.assertNotIn("EMPTY", image_items)
 
+    def test_a_rerun_finishes_the_empty_draft_an_interrupted_review_left(self) -> None:
+        # A run stopped between creating its draft and adding the images; the
+        # rerun uses that draft instead of leaving it behind and starting another.
+        fake = self.fake(drafts=("EMPTY",), draft_items={"EMPTY": []})
+        self.assertEqual(self.run_creative(fake), 0)
+        self.assertNotIn(("review", "submissions-create"), [c[:2] for c in fake.writes()])
+        self.assertEqual(flag(fake.writes()[-1], "--id"), "EMPTY")
+        # A draft already holding some of the images is finished before an empty one.
+        library = [self.image("H", "header", "PREPARE_FOR_SUBMISSION"),
+                   self.image("S", "search-results", "PREPARE_FOR_SUBMISSION")]
+        fake = self.fake(library=library, drafts=("EMPTY", "PART"),
+                         draft_items={"EMPTY": [], "PART": [item("I-H", "appAssetLibraryImage", "H")]})
+        self.assertEqual(self.run_creative(fake), 0)
+        self.assertEqual({flag(c, "--submission") for c in fake.writes() if c[:2] == ("review", "items-add")}, {"PART"})
+        self.assertEqual(flag(fake.writes()[-1], "--id"), "PART")
+
     def test_a_creative_submission_with_other_items_is_not_submitted(self) -> None:
         fake = self.fake(drafts=())
         fake_run = fake.run
