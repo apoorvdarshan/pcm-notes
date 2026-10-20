@@ -1,1 +1,2 @@
 PyJWT[crypto]==2.15.1
+Pillow==12.3.0

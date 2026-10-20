@@ -9,8 +9,11 @@ key=value lines to $GITHUB_OUTPUT when it is set):
                 the run builds, also check the app declares export compliance.
   preflight     Read-only check, before anything is built, that the App Store
                 version this release edits exists, is in a state that can take
-                its listing, What's New, screenshots and review submission, and
-                has a localization for every repository locale.
+                its listing, What's New, screenshots, header and search results
+                images and review submission, and has a localization for every
+                repository locale. With review submission, a READY_FOR_REVIEW
+                version's draft is checked too; with the creative assets, the
+                images' Asset Library state.
   build-number  Next CFBundleVersion: max(project value, highest ASC build + 1).
   wait-build    Poll App Store Connect until the build uploaded by THIS run is
                 processed (VALID, unexpired, matching app/version/build number).
@@ -55,6 +58,7 @@ OPERATION_SWITCHES = (
     ("IOS_UPLOAD_LISTING", "listing"),
     ("IOS_UPLOAD_WHATS_NEW", "whats_new"),
     ("IOS_UPLOAD_SCREENSHOTS", "screenshots"),
+    ("IOS_UPLOAD_CREATIVE_ASSETS", "creative"),
     ("IOS_SUBMIT_REVIEW", "submit"),
     ("IOS_PUBLIC_RELEASE", "public_release"),
 )
@@ -272,7 +276,7 @@ def resolve_gates(
             "mode": mode,
             "master": master and mode == "release",
             "build": mode == "validate" or resolved["upload_build"],
-            "asc": any(resolved[k] for k in ("listing", "whats_new", "screenshots", "submit")),
+            "asc": any(resolved[k] for k in ("listing", "whats_new", "screenshots", "creative", "submit")),
             "poll_seconds": poll_seconds,
             "wait_minutes": wait_minutes,
             "marketing_version": marketing_version,
@@ -490,12 +494,16 @@ def preflight_problems(
     screenshot_states: set[str],
     submittable_states: set[str],
     missing_locales: list[str] | tuple[str, ...] = (),
+    creative: bool = False,
+    creative_states: set[str] = frozenset(),
 ) -> list[str]:
     """Why the App Store version cannot take this release (empty when it can).
 
-    `text` covers the listing and What's New. A fresh run always uploads a new
-    build, so it needs states in which its edits can actually be made; reruns of
-    a later job ("Re-run failed jobs") never come back here."""
+    `text` covers the listing and What's New, `creative` the header and search
+    results images (whose Asset Library state cmd_preflight checks next). A fresh
+    run always uploads a new build, so it needs states in which its edits can
+    actually be made; reruns of a later job ("Re-run failed jobs") never come
+    back here."""
     if version is None:
         return [
             f"App Store Connect has no iOS version {version_string}; turn on "
@@ -514,6 +522,11 @@ def preflight_problems(
         problems.append(
             f"version {version_string} is {shown}, so its screenshots cannot be replaced "
             f"(editable: {', '.join(sorted(screenshot_states))})"
+        )
+    if creative and state not in creative_states:
+        problems.append(
+            f"version {version_string} is {shown}, so it cannot take header and search results "
+            f"images (allowed: {', '.join(sorted(creative_states))})"
         )
     if submit and state == "WAITING_FOR_REVIEW":
         problems.append(
@@ -554,11 +567,12 @@ def cmd_preflight(args: argparse.Namespace) -> None:
     version = asc_release.find_ios_app_store_version(client, app_id, args.version)
     text = args.listing or args.whats_new
     missing_locales: list[str] = []
-    if version is not None and (text or args.screenshots):
-        # Listing and What's New go to every repository locale; screenshots go to
-        # the primary one. Each needs its localization on the version.
+    if version is not None and (text or args.screenshots or args.creative):
+        # Listing and What's New go to every repository locale; screenshots and the
+        # header and search results images go to the primary one. Each needs its
+        # localization on the version.
         locales = set(asc_release.listing_locales(METADATA_DIR)) if text else set()
-        if args.screenshots:
+        if args.screenshots or args.creative:
             locales.add(asc_release.PRIMARY_LOCALE)
         collection = f"/appStoreVersions/{version['id']}/appStoreVersionLocalizations"
         missing_locales = [
@@ -575,10 +589,30 @@ def cmd_preflight(args: argparse.Namespace) -> None:
         screenshot_states=asc_release.SCREENSHOT_EDITABLE_VERSION_STATES,
         submittable_states=asc_release.SUBMITTABLE_VERSION_STATES,
         missing_locales=missing_locales,
+        creative=args.creative,
+        # Placing an image needs an editable version; a version in a draft review
+        # submission still passes while its images need nothing (checked below).
+        creative_states=asc_release.SUBMITTABLE_VERSION_STATES,
     )
     if problems:
         raise ReleaseError("; ".join(problems))
-    state = (version.get("attributes") or {}).get("appStoreState")
+    state = (version.get("attributes") or {}).get("appStoreState") or ""
+    if args.submit and state == "READY_FOR_REVIEW":
+        # The store step submits the draft holding this version; finding out
+        # after the build and upload that there is none would be too late.
+        asc_release.version_draft(client, app_id, version["id"], state)
+    if args.creative:
+        # The same plan the store step makes, read-only: an image the version
+        # cannot take now (rejected, or needing upload or review while the version
+        # sits in a review submission) stops the run before the build.
+        asc_release.plan_creative_assets(
+            client,
+            app_id=app_id,
+            version_id=version["id"],
+            locale=asc_release.PRIMARY_LOCALE,
+            creative_dir=asc_release.DEFAULT_CREATIVE_DIR,
+            editable=state in asc_release.EDITABLE_VERSION_STATES,
+        )
     print(f"App Store version {args.version} exists ({state}) and can take this release; nothing was changed")
 
 
@@ -643,6 +677,10 @@ def main(argv: list[str] | None = None) -> None:
     preflight.add_argument("--listing", action="store_true", help="the listing will be uploaded")
     preflight.add_argument("--whats-new", action="store_true", help="What's New will be uploaded")
     preflight.add_argument("--screenshots", action="store_true", help="screenshots will be uploaded")
+    preflight.add_argument(
+        "--creative", action="store_true",
+        help="header and search results images will be uploaded, reviewed or placed",
+    )
     preflight.add_argument("--submit", action="store_true", help="the version will be submitted for review")
     preflight.set_defaults(func=cmd_preflight)
     sub.add_parser("build-number").set_defaults(func=cmd_build_number)
