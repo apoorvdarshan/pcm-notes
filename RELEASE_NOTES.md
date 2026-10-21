@@ -10,6 +10,13 @@ before anything is built.
 The App Store's What's New text is kept separately, per language, in
 `store/metadata/ios/<locale>/whats_new.txt`.
 
+## v1.1.1
+
+App Store version 1.1.1.
+
+- Bug fixes and improvements
+- RevenueCat 5.96
+
 ## v1.1.0
 
 App Store version 1.1.0.

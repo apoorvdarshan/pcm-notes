@@ -1,5 +1,1 @@
-• PCM Notes is now open source: star it on GitHub, report a bug or request a feature right from the Support tab
-• Rate PCM Notes or share it with friends from Support
-• Follow along on Instagram (@apoorvcodes) and X (@apoorvdarshan)
-• One support email: ad13dtu@gmail.com
-• The website has moved to pcm-notes.apoorvdarshan.com
+Bug fixes and improvements.
