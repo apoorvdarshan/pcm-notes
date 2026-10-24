@@ -53,7 +53,15 @@ runtimes = [r for r in data['runtimes'] if r.get('isAvailable') and
             '.iOS-' in r['identifier'] and version(r) >= (17, 6)]
 if not runtimes:
     raise SystemExit('Install an iOS 17.6 or newer Simulator runtime in Xcode.')
-runtime = max(runtimes, key=version)
+iphone_names = ['iPhone 17 Pro', 'iPhone 16 Pro', 'iPhone 17']
+ipad_names = ['iPad Pro 13-inch (M5)', 'iPad Pro 13-inch (M4)', 'iPad Air 13-inch (M3)']
+def offers(runtime, names):
+    return any(d['name'] in names for d in runtime.get('supportedDeviceTypes', []))
+# A device-specific runtime can be newer than the general one (iOS 27.1 ships only the
+# iPhone Duo, a 386x678 pt screen), so take the newest runtime that offers the preferred
+# iPhone and iPad instead of the newest runtime overall.
+runtime = max((r for r in runtimes if offers(r, iphone_names) and offers(r, ipad_names)),
+              key=version, default=max(runtimes, key=version))
 types = runtime.get('supportedDeviceTypes', [])
 def pick(family, preferred):
     devices = [d for d in types if d.get('productFamily') == family]
@@ -61,8 +69,8 @@ def pick(family, preferred):
         raise SystemExit(f'The iOS {runtime["version"]} runtime has no {family} simulator.')
     by_name = {d['name']: d for d in devices}
     return next((by_name[name] for name in preferred if name in by_name), devices[0])
-iphone = pick('iPhone', ['iPhone 17 Pro', 'iPhone 16 Pro', 'iPhone 17'])
-ipad = pick('iPad', ['iPad Pro 13-inch (M5)', 'iPad Pro 13-inch (M4)', 'iPad Air 13-inch (M3)'])
+iphone = pick('iPhone', iphone_names)
+ipad = pick('iPad', ipad_names)
 print(runtime['identifier'], iphone['identifier'], ipad['identifier'])
 PY
 ) || true
