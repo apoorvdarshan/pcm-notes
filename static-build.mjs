@@ -1,11 +1,16 @@
 import { cpSync, mkdirSync, rmSync } from "node:fs";
 
+import { validateCatalog } from "./scripts/check-catalog.mjs";
+
+validateCatalog();
+
 const output = new URL("./dist/", import.meta.url);
 rmSync(output, { recursive: true, force: true });
 mkdirSync(output, { recursive: true });
 
 for (const path of [
   "assets",
+  "catalog.json",
   "chemistry",
   "mathematics",
   "physics",

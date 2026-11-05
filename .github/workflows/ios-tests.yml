@@ -8,6 +8,7 @@ on:
     paths:
       - 'ios/**'
       # The app bundles one PDF per chapter, generated from these note images.
+      - 'catalog.json'
       - 'physics/**'
       - 'chemistry/**'
       - 'mathematics/**'
@@ -19,6 +20,7 @@ on:
     branches: [main]
     paths:
       - 'ios/**'
+      - 'catalog.json'
       - 'physics/**'
       - 'chemistry/**'
       - 'mathematics/**'
@@ -54,6 +56,7 @@ jobs:
           # The website and marketing images are not needed; the note images are.
           sparse-checkout: |
             /ios/
+            /catalog.json
             /physics/
             /chemistry/
             /mathematics/

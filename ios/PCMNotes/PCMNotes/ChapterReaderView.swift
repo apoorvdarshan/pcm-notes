@@ -29,6 +29,7 @@ struct ChapterReaderView: View {
     /// session (see `ReviewPrompt`). Kept local until then, so reading never
     /// redraws the chapter list behind the reader.
     let onClose: (_ goodSession: Bool) -> Void
+    let onDismiss: (() -> Void)?
 
     @State private var currentPage: Int
     @State private var renderedPageCount = 0
@@ -37,10 +38,11 @@ struct ChapterReaderView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
 
-    init(subject: SubjectArea, chapter: Chapter, onClose: @escaping (_ goodSession: Bool) -> Void = { _ in }) {
+    init(subject: SubjectArea, chapter: Chapter, onClose: @escaping (_ goodSession: Bool) -> Void = { _ in }, onDismiss: (() -> Void)? = nil) {
         self.subject = subject
         self.chapter = chapter
         self.onClose = onClose
+        self.onDismiss = onDismiss
 
         let storedPage = UserDefaults.standard.integer(
             forKey: chapter.readingProgressKey(for: subject)
@@ -62,7 +64,8 @@ struct ChapterReaderView: View {
                     pdfURL: pdfURL,
                     accent: subject.accent,
                     currentPage: $currentPage,
-                    pageCount: $renderedPageCount
+                    pageCount: $renderedPageCount,
+                    onDismiss: onDismiss
                 )
             } else {
                 missingPDF
@@ -85,6 +88,9 @@ struct ChapterReaderView: View {
         .onDisappear {
             onClose(goodSession)
         }
+        .onChange(of: goodSession) { _, isGoodSession in
+            if isGoodSession { onClose(true) }
+        }
     }
 
     private var missingPDF: some View {
@@ -98,7 +104,7 @@ struct ChapterReaderView: View {
                 Text("Rebuild and reinstall PCM Notes to embed this chapter's offline PDF.")
             } actions: {
                 Button("Return to chapters") {
-                    dismiss()
+                    if let onDismiss { onDismiss() } else { dismiss() }
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(subject.accent)
@@ -259,17 +265,17 @@ private struct FocusPDFReader: View {
     let accent: Color
     @Binding var currentPage: Int
     @Binding var pageCount: Int
+    let onDismiss: (() -> Void)?
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @AppStorage("reader.ipad.layout") private var storedLayout = PDFReadingLayout.continuous.rawValue
 
-    private var isPad: Bool {
-        UIDevice.current.userInterfaceIdiom == .pad
-    }
-
     private var readingLayout: PDFReadingLayout {
-        PDFReadingLayout(rawValue: storedLayout) ?? .continuous
+        // Keep the preference while folded; a compact reader always uses one page.
+        guard horizontalSizeClass == .regular else { return .continuous }
+        return PDFReadingLayout(rawValue: storedLayout) ?? .continuous
     }
 
     private var readerBackdrop: Color {
@@ -295,12 +301,14 @@ private struct FocusPDFReader: View {
                 pageCount: $pageCount
             )
             .background(readerBackdrop)
-            .ignoresSafeArea()
         }
-        .safeAreaInset(edge: .top) {
-            HStack(spacing: 12) {
+        .navigationTitle(title)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(chromeBackground, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
                 Button {
-                    dismiss()
+                    if let onDismiss { onDismiss() } else { dismiss() }
                 } label: {
                     Image(systemName: "xmark")
                         .font(.headline)
@@ -309,15 +317,9 @@ private struct FocusPDFReader: View {
                 .buttonStyle(.plain)
                 .background(chromeButtonBackground, in: Circle())
                 .accessibilityLabel("Close focus reader")
-
-                Text(title)
-                    .font(.headline)
-                    .lineLimit(1)
-                    .foregroundStyle(.primary)
-
-                Spacer()
-
-                if isPad {
+            }
+            ToolbarItemGroup(placement: .primaryAction) {
+                if horizontalSizeClass == .regular {
                     Menu {
                         Picker("Page layout", selection: $storedLayout) {
                             ForEach(PDFReadingLayout.allCases) { layout in
@@ -346,10 +348,6 @@ private struct FocusPDFReader: View {
                 .background(chromeButtonBackground, in: Circle())
                 .accessibilityLabel("Share chapter PDF")
             }
-            .foregroundStyle(.primary)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-            .background(chromeBackground)
         }
         .safeAreaInset(edge: .bottom) {
             ReaderControlBar(
@@ -362,7 +360,6 @@ private struct FocusPDFReader: View {
             .padding(.vertical, 8)
             .background(chromeBackground)
         }
-        .statusBarHidden()
     }
 }
 
@@ -377,7 +374,7 @@ private struct LocalPDFView: UIViewRepresentable {
     }
 
     func makeUIView(context: Context) -> PDFView {
-        let pdfView = PDFView()
+        let pdfView = ResizablePDFView()
         pdfView.backgroundColor = .clear
         pdfView.displayMode = .singlePageContinuous
         pdfView.displayDirection = .vertical
@@ -521,6 +518,23 @@ private struct LocalPDFView: UIViewRepresentable {
         deinit {
             stopObserving()
         }
+    }
+}
+
+/// PDFKit does not reliably refit a document when its container changes between
+/// the Duo's displays or when a sidebar is toggled. Keep the visible page while
+/// fitting the new proposal; normal scrolling and pinch zoom do not trigger this.
+private final class ResizablePDFView: PDFView {
+    private var lastSize = CGSize.zero
+
+    override func layoutSubviews() {
+        let page = currentPage
+        super.layoutSubviews()
+        guard bounds.size != lastSize, bounds.width > 0, bounds.height > 0 else { return }
+        lastSize = bounds.size
+        let fitScale = scaleFactorForSizeToFit
+        if fitScale > 0 { scaleFactor = fitScale }
+        if let page { go(to: page) }
     }
 }
 
