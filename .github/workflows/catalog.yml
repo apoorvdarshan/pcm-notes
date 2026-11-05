@@ -1,0 +1,25 @@
+name: Chapter catalog
+on:
+  pull_request:
+    paths: ['catalog.json', 'physics/**', 'chemistry/**', 'mathematics/**', 'scripts/*catalog.mjs', 'static-build.mjs', '.github/workflows/catalog.yml']
+  push:
+    branches: [main]
+    paths: ['catalog.json', 'physics/**', 'chemistry/**', 'mathematics/**', 'scripts/*catalog.mjs', 'static-build.mjs', '.github/workflows/catalog.yml']
+permissions:
+  contents: read
+concurrency:
+  group: catalog-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  catalog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+      - run: node --test scripts/test-catalog.mjs
+      - run: node static-build.mjs

@@ -47,7 +47,7 @@ Physics and Chemistry support JEE and NEET revision. Mathematics is organised fo
 - **Full-screen focus reader** — chapters open directly from the list into a clean, distraction-free PDF view.
 - **Reading progress** — each chapter remembers the last page and offers one-tap resume from its subject index.
 - **Fast navigation** — page slider, previous/next controls, native pinch-to-zoom, and local PDF sharing.
-- **iPad two-page spreads** — switch between continuous reading and a book-like two-page layout.
+- **Adaptive reading on iPad and iPhone Duo** — browse chapters beside the PDF on a wide display; switch between continuous reading and a book-like two-page layout. Compact displays keep a single-page reader without changing the saved page or spread preference.
 - **Chapter search** — filter by chapter title or number inside every subject.
 - **System, Light, and Dark** — follow the device appearance or keep a fixed paper-and-ink theme.
 - **Five native tabs** — Physics, Chemistry, Maths, Support, and About.
@@ -59,7 +59,7 @@ Physics and Chemistry support JEE and NEET revision. Mathematics is organised fo
 
 The default reader is a vertically continuous, full-screen `PDFKit` view sized to the device. It keeps controls available without placing an intermediate chapter-detail screen between the chapter list and the notes.
 
-On iPad, the layout menu adds a two-page continuous spread with book-style page pairing. Reader layout, appearance, and per-chapter progress are stored locally with `UserDefaults`.
+On wide displays, including the iPhone Duo inner display, the reader offers a chapter sidebar and a two-page continuous spread with book-style page pairing. The same navigation hierarchy adapts when the available space changes. Reader layout, appearance, and per-chapter progress are stored locally with `UserDefaults`.
 
 ## 🛠️ Built with
 
@@ -82,6 +82,10 @@ RevenueCat Purchases is the only third-party iOS runtime dependency. It wraps St
 4. Build and run.
 
 The first build compiles the offline-notes generator and converts the 2,173 source images into 91 chapter PDFs. Later builds reuse the generated cache unless source pages change.
+
+### Shared chapter catalog
+
+`catalog.json` is the single source for chapter numbers, titles, folder names and page counts. Both the native app and website consume it. The website build and offline-PDF generator reject a catalog that differs from the source page files. After editing notes, update the catalog and run `npm run test:catalog`.
 
 ### Website
 
@@ -125,13 +129,7 @@ git tag -a v1.0.1 -m "PCM Notes 1.0.1"
 git push origin v1.0.1
 ```
 
-Every App Store operation (build upload, listing, What's New, screenshots, review
-submission, public release) has its own repository variable and stays off until it
-is switched on; with them off, a tag only creates the GitHub Release. The App Store
-listing is kept in [`store/metadata/`](store/metadata/). **Run workflow** on the iOS
-Release workflow validates signing and export with App Store Connect without
-uploading anything. See [`store/README.md`](store/README.md) for the switches,
-secrets and release steps.
+Release automation uses the SHA-pinned shared `apoorvdarshan/store-release` workflows, configured by [`store/store-release.toml`](store/store-release.toml). Build upload, listing, What's New, screenshots, creative assets, review submission and public release each have a separate repository switch. See [`store/README.md`](store/README.md) for the current defaults and controls. A manual run validates signing and export without uploading anything.
 
 Xcode Cloud no longer builds this app (its workflow and product were removed on
 2026-10-14); do not re-create an Xcode Cloud workflow, or a tag would build and
