@@ -383,6 +383,9 @@ private struct LocalPDFView: UIViewRepresentable {
         pdfView.displayBox = .cropBox
         pdfView.autoScales = true
         configure(pdfView, for: readingLayout)
+        pdfView.onResize = { [weak coordinator = context.coordinator] view in
+            coordinator?.refit(view)
+        }
         context.coordinator.observe(pdfView)
         loadDocument(into: pdfView, coordinator: context.coordinator)
         return pdfView
@@ -398,11 +401,14 @@ private struct LocalPDFView: UIViewRepresentable {
 
         if context.coordinator.loadedLayout != readingLayout {
             context.coordinator.loadedLayout = readingLayout
+            // PDFKit may change its current page while applying the new layout.
+            // Schedule restoration before configuring it so those events are ignored.
+            context.coordinator.refit(pdfView)
             configure(pdfView, for: readingLayout)
-            refit(pdfView)
         }
 
         guard
+            !context.coordinator.isRefitting,
             let document = pdfView.document,
             let visiblePage = pdfView.currentPage
         else { return }
@@ -424,6 +430,7 @@ private struct LocalPDFView: UIViewRepresentable {
 
         coordinator.loadedURL = url
         coordinator.loadedLayout = readingLayout
+        coordinator.refit(pdfView)
         pdfView.document = document
         pdfView.autoScales = true
         let documentPageCount = document.pageCount
@@ -431,10 +438,6 @@ private struct LocalPDFView: UIViewRepresentable {
         DispatchQueue.main.async {
             pageCount = documentPageCount
         }
-
-        let targetIndex = min(max(currentPage - 1, 0), max(document.pageCount - 1, 0))
-
-        refit(pdfView, targetIndex: targetIndex)
     }
 
     private func configure(_ pdfView: PDFView, for layout: PDFReadingLayout) {
@@ -450,33 +453,34 @@ private struct LocalPDFView: UIViewRepresentable {
         pdfView.autoScales = true
     }
 
-    private func refit(_ pdfView: PDFView, targetIndex: Int? = nil) {
-        let fallbackIndex = min(
-            max(currentPage - 1, 0),
-            max((pdfView.document?.pageCount ?? 1) - 1, 0)
-        )
-
-        DispatchQueue.main.async {
-            let fitScale = pdfView.scaleFactorForSizeToFit
-            if fitScale > 0 {
-                pdfView.scaleFactor = fitScale
-                pdfView.autoScales = true
-            }
-
-            if let targetPage = pdfView.document?.page(at: targetIndex ?? fallbackIndex) {
-                pdfView.go(to: targetPage)
-            }
-        }
-    }
-
     final class Coordinator: NSObject {
         var parent: LocalPDFView
         var loadedURL: URL?
         var loadedLayout: PDFReadingLayout?
         private var pageObserver: NSObjectProtocol?
+        private var refitGeneration = 0
+        private(set) var isRefitting = false
 
         init(parent: LocalPDFView) {
             self.parent = parent
+        }
+
+        func refit(_ pdfView: PDFView) {
+            refitGeneration += 1
+            let generation = refitGeneration
+            isRefitting = true
+            DispatchQueue.main.async { [weak self, weak pdfView] in
+                guard let self, let pdfView, generation == refitGeneration else { return }
+                pdfView.layoutIfNeeded()
+                let scale = pdfView.scaleFactorForSizeToFit
+                if scale > 0 { pdfView.scaleFactor = scale }
+                pdfView.layoutIfNeeded()
+                if let document = pdfView.document, document.pageCount > 0 {
+                    let index = min(max(parent.currentPage - 1, 0), document.pageCount - 1)
+                    if let page = document.page(at: index) { pdfView.go(to: page) }
+                }
+                if generation == refitGeneration { isRefitting = false }
+            }
         }
 
         func observe(_ pdfView: PDFView) {
@@ -488,15 +492,19 @@ private struct LocalPDFView: UIViewRepresentable {
                 guard
                     let self,
                     let pdfView,
+                    !isRefitting,
                     let document = pdfView.document,
                     let page = pdfView.currentPage
                 else { return }
 
                 let visiblePage = document.index(for: page) + 1
                 let documentPageCount = document.pageCount
+                let generation = refitGeneration
 
-                DispatchQueue.main.async { [weak self] in
-                    guard let self else { return }
+                DispatchQueue.main.async { [weak self, weak pdfView] in
+                    guard let self, let pdfView, !isRefitting,
+                          generation == refitGeneration,
+                          pdfView.document === document, pdfView.currentPage === page else { return }
 
                     if parent.currentPage != visiblePage {
                         parent.currentPage = visiblePage
@@ -526,15 +534,14 @@ private struct LocalPDFView: UIViewRepresentable {
 /// fitting the new proposal; normal scrolling and pinch zoom do not trigger this.
 private final class ResizablePDFView: PDFView {
     private var lastSize = CGSize.zero
+    var onResize: ((PDFView) -> Void)?
 
     override func layoutSubviews() {
-        let page = currentPage
+        if bounds.size != lastSize, bounds.width > 0, bounds.height > 0 {
+            lastSize = bounds.size
+            onResize?(self)
+        }
         super.layoutSubviews()
-        guard bounds.size != lastSize, bounds.width > 0, bounds.height > 0 else { return }
-        lastSize = bounds.size
-        let fitScale = scaleFactorForSizeToFit
-        if fitScale > 0 { scaleFactor = fitScale }
-        if let page { go(to: page) }
     }
 }
 

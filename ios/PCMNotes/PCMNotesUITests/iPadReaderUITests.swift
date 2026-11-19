@@ -41,7 +41,8 @@ final class iPadReaderUITests: XCTestCase {
         // Page 1 stands alone like a cover, then pages pair up.
         let slider = app.sliders["reader.pageSlider"]
         let next = app.buttons["Next page"]
-        XCTAssertTrue(slider.waitForValue("Page 1 of 9"))
+        XCTAssertTrue(slider.waitForValue("Page 1 of 9"),
+                      "Switching layout must keep the reader on the cover, got \(String(describing: slider.value))")
         next.tap()
         XCTAssertTrue(slider.waitForValue("Pages 2 through 3 of 9"))
         XCTAssertTrue(app.staticTexts["2–3 / 9"].exists)
