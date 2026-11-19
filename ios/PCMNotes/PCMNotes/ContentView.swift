@@ -14,6 +14,17 @@ private enum AppTab: Hashable {
     case support
     case about
 
+    static var captureSelection: AppTab {
+        #if DEBUG && targetEnvironment(simulator)
+        switch ProcessInfo.processInfo.environment["PCM_CAPTURE_SUBJECT"] {
+        case "chemistry": return .chemistry
+        case "mathematics": return .mathematics
+        default: break
+        }
+        #endif
+        return .physics
+    }
+
     var accent: Color {
         switch self {
         case .physics: AppPalette.physics
@@ -26,7 +37,7 @@ private enum AppTab: Hashable {
 }
 
 struct ContentView: View {
-    @State private var selection: AppTab = .physics
+    @State private var selection: AppTab = AppTab.captureSelection
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage(AppAppearance.storageKey) private var storedAppearance = AppAppearance.system.rawValue
 

@@ -13,6 +13,7 @@ on:
       - 'chemistry/**'
       - 'mathematics/**'
       - 'scripts/test-ios.sh'
+      - 'scripts/capture-ios-store.sh'
       - 'scripts/ios_test_summary.py'
       - 'scripts/test_ios_test_summary.py'
       - '.github/workflows/ios-tests.yml'
@@ -25,10 +26,16 @@ on:
       - 'chemistry/**'
       - 'mathematics/**'
       - 'scripts/test-ios.sh'
+      - 'scripts/capture-ios-store.sh'
       - 'scripts/ios_test_summary.py'
       - 'scripts/test_ios_test_summary.py'
       - '.github/workflows/ios-tests.yml'
   workflow_dispatch:
+    inputs:
+      capture_store_screenshots:
+        description: Also capture the iPhone and iPad App Store scenes
+        type: boolean
+        default: false
   workflow_call:
 
 permissions:
@@ -63,6 +70,7 @@ jobs:
             /scripts/test-ios.sh
             /scripts/ios_test_summary.py
             /scripts/test_ios_test_summary.py
+            /scripts/capture-ios-store.sh
 
       - name: Test the result checker
         run: python3 -m unittest scripts/test_ios_test_summary.py
@@ -78,6 +86,22 @@ jobs:
           IOS_TEST_RESULTS: ${{ runner.temp }}/ios-test-results
           IOS_TEST_DERIVED_DATA: ${{ runner.temp }}/ios-test-build
         run: bash scripts/test-ios.sh
+
+      - name: Capture App Store scenes
+        if: ${{ !cancelled() && inputs.capture_store_screenshots }}
+        env:
+          IOS_TEST_DERIVED_DATA: ${{ runner.temp }}/ios-test-build
+          IOS_STORE_CAPTURES: ${{ runner.temp }}/ios-store-captures
+        run: bash scripts/capture-ios-store.sh
+
+      - name: Retain App Store captures
+        if: ${{ !cancelled() && inputs.capture_store_screenshots }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ios-store-captures
+          path: ${{ runner.temp }}/ios-store-captures
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Retain test results and failure screenshots
         if: failure()

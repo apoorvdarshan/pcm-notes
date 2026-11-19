@@ -18,6 +18,18 @@ struct SubjectScene: View {
         .fullScreenCover(item: $selectedChapter) { chapter in
             ChapterReadingScene(subject: subject, initialChapter: chapter, onClose: askForRating)
         }
+        #if DEBUG && targetEnvironment(simulator)
+        .task {
+            let values = ProcessInfo.processInfo.environment
+            guard values["PCM_CAPTURE_SUBJECT"] == subject.slug,
+                  let rawPage = values["PCM_CAPTURE_PAGE"],
+                  let page = Int(rawPage),
+                  let chapter = subject.chapters.first else { return }
+            UserDefaults.standard.set(page, forKey: chapter.readingProgressKey(for: subject))
+            UserDefaults.standard.set(values["PCM_CAPTURE_LAYOUT"] ?? "continuous", forKey: "reader.ipad.layout")
+            selectedChapter = chapter
+        }
+        #endif
     }
 
     /// After a good reading session, request the App Store rating prompt when

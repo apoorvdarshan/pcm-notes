@@ -52,6 +52,13 @@ are kept as an artifact for seven days.
   offline tip-price retry; About's archive summary, version and legal pages; on
   iPad, the two-page spread, paging by pairs and remembering the layout.
 
+## App Store captures
+
+The manual **iOS tests** workflow can also retain real iPhone and iPad PNG
+captures as the `ios-store-captures` artifact. Turn on **Also capture the iPhone
+and iPad App Store scenes** when dispatching the workflow. It uses the same
+unsigned Debug build as the tests and never uploads to the App Store.
+
 ## Test mode
 
 UI tests launch the app with `--ui-testing` (and usually `--ui-testing-reset`).
