@@ -33,10 +33,11 @@ struct Chapter: Codable, Identifiable, Hashable, Sendable {
 
     /// The chapter row's progress line: where to resume, or the size of an unread chapter.
     func progressSummary(savedPage: Int) -> String {
-        if savedPage > 1 {
-            "Resume page \(savedPage) of \(pageCount)"
+        let page = resumePage(fromSaved: savedPage)
+        if page > 1 {
+            return "Resume page \(page) of \(pageCount)"
         } else {
-            "\(pageCount) pages · offline PDF"
+            return "\(pageCount) pages · offline PDF"
         }
     }
 }

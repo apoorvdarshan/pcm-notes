@@ -42,6 +42,7 @@ private struct ChapterReadingScene: View {
     @State private var selection: Chapter?
     @State private var goodSession = false
     @State private var searchText = ""
+    @State private var columnVisibility = NavigationSplitViewVisibility.all
     @State private var compactColumn = NavigationSplitViewColumn.detail
     @Environment(\.dismiss) private var dismiss
 
@@ -53,7 +54,7 @@ private struct ChapterReadingScene: View {
     }
 
     var body: some View {
-        NavigationSplitView(preferredCompactColumn: $compactColumn) {
+        NavigationSplitView(columnVisibility: $columnVisibility, preferredCompactColumn: $compactColumn) {
             List(selection: $selection) {
                 ForEach(subject.chapters(matching: searchText)) { chapter in
                     NavigationLink(value: chapter) {

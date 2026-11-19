@@ -43,6 +43,8 @@ struct ChapterNavigationTests {
         #expect(vectors.progressSummary(savedPage: 0) == "9 pages · offline PDF")
         #expect(vectors.progressSummary(savedPage: 1) == "9 pages · offline PDF")
         #expect(vectors.progressSummary(savedPage: 4) == "Resume page 4 of 9")
+        #expect(vectors.progressSummary(savedPage: 42) == "Resume page 9 of 9")
+        #expect(vectors.progressSummary(savedPage: -1) == "9 pages · offline PDF")
     }
 
     @Test func everyChapterKeepsItsOwnReadingProgress() {

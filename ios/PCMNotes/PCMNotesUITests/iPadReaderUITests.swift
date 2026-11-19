@@ -65,12 +65,8 @@ final class iPadReaderUITests: XCTestCase {
         XCTAssertTrue(app.sliders["reader.pageSlider"].waitForValue("Page 2 of 9"))
 
         let second = app.buttons["reader.chapter.physics.2"]
-        if !second.isHittable {
-            let toggle = app.buttons["Toggle Sidebar"]
-            XCTAssertTrue(toggle.waitForExistence(timeout: stepTimeout))
-            toggle.tap()
-        }
         XCTAssertTrue(second.waitForExistence(timeout: stepTimeout))
+        XCTAssertTrue(second.isHittable, "Wide displays should show the chapter sidebar beside the PDF")
         second.tap()
         XCTAssertTrue(app.sliders["reader.pageSlider"].waitForValue("Page 1 of 14"))
         app.buttons["Close focus reader"].tap()
