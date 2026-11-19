@@ -523,11 +523,14 @@ private struct LocalPDFView: UIViewRepresentable {
                           pdfView.document === document, pdfView.currentPage === page else { return }
 
                     var visiblePage = document.index(for: page) + 1
-                    if parent.readingLayout == .spread,
-                       let scrollView = (pdfView as? ResizablePDFView)?.documentScrollView,
-                       scrollView.contentOffset.y + scrollView.adjustedContentInset.top <= 1,
-                       let cover = document.page(at: 0), pdfView.visiblePages.contains(cover) {
-                        visiblePage = 1
+                    if parent.readingLayout == .spread {
+                        // PDFKit's currentPage can be a lower spread when several
+                        // rows fit on screen. The reader position is the top row.
+                        let point = CGPoint(x: pdfView.bounds.width * 0.25,
+                                            y: pdfView.safeAreaInsets.top + 12)
+                        if let topPage = pdfView.page(for: point, nearest: true) {
+                            visiblePage = document.index(for: topPage) + 1
+                        }
                     }
                     if parent.currentPage != visiblePage {
                         parent.currentPage = visiblePage
