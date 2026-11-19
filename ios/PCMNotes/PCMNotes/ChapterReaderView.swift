@@ -414,9 +414,8 @@ private struct LocalPDFView: UIViewRepresentable {
         else { return }
 
         let targetIndex = min(max(currentPage - 1, 0), max(document.pageCount - 1, 0))
-        if document.index(for: visiblePage) != targetIndex,
-           let targetPage = document.page(at: targetIndex) {
-            pdfView.go(to: targetPage)
+        if document.index(for: visiblePage) != targetIndex {
+            context.coordinator.position(pdfView, at: targetIndex)
         }
     }
 
@@ -465,6 +464,24 @@ private struct LocalPDFView: UIViewRepresentable {
             self.parent = parent
         }
 
+        func position(_ pdfView: PDFView, at index: Int) {
+            guard let page = pdfView.document?.page(at: index) else { return }
+            if parent.readingLayout == .spread {
+                // A tall spread viewport can show the cover and part of the first
+                // pair at once. Jump to the top edge, not PDFKit's centered page.
+                let bounds = page.bounds(for: pdfView.displayBox)
+                pdfView.go(to: PDFDestination(page: page, at: CGPoint(x: bounds.minX, y: bounds.maxY)))
+                if index == 0, let scrollView = (pdfView as? ResizablePDFView)?.documentScrollView {
+                    scrollView.setContentOffset(
+                        CGPoint(x: scrollView.contentOffset.x, y: -scrollView.adjustedContentInset.top),
+                        animated: false
+                    )
+                }
+            } else {
+                pdfView.go(to: page)
+            }
+        }
+
         func refit(_ pdfView: PDFView) {
             refitGeneration += 1
             let generation = refitGeneration
@@ -477,7 +494,7 @@ private struct LocalPDFView: UIViewRepresentable {
                 pdfView.layoutIfNeeded()
                 if let document = pdfView.document, document.pageCount > 0 {
                     let index = min(max(parent.currentPage - 1, 0), document.pageCount - 1)
-                    if let page = document.page(at: index) { pdfView.go(to: page) }
+                    position(pdfView, at: index)
                 }
                 if generation == refitGeneration { isRefitting = false }
             }
@@ -497,7 +514,6 @@ private struct LocalPDFView: UIViewRepresentable {
                     let page = pdfView.currentPage
                 else { return }
 
-                let visiblePage = document.index(for: page) + 1
                 let documentPageCount = document.pageCount
                 let generation = refitGeneration
 
@@ -506,6 +522,13 @@ private struct LocalPDFView: UIViewRepresentable {
                           generation == refitGeneration,
                           pdfView.document === document, pdfView.currentPage === page else { return }
 
+                    var visiblePage = document.index(for: page) + 1
+                    if parent.readingLayout == .spread,
+                       let scrollView = (pdfView as? ResizablePDFView)?.documentScrollView,
+                       scrollView.contentOffset.y + scrollView.adjustedContentInset.top <= 1,
+                       let cover = document.page(at: 0), pdfView.visiblePages.contains(cover) {
+                        visiblePage = 1
+                    }
                     if parent.currentPage != visiblePage {
                         parent.currentPage = visiblePage
                     }
@@ -535,6 +558,14 @@ private struct LocalPDFView: UIViewRepresentable {
 private final class ResizablePDFView: PDFView {
     private var lastSize = CGSize.zero
     var onResize: ((PDFView) -> Void)?
+    var documentScrollView: UIScrollView? {
+        var current = documentView?.superview
+        while let view = current, view !== self {
+            if let scrollView = view as? UIScrollView { return scrollView }
+            current = view.superview
+        }
+        return nil
+    }
 
     override func layoutSubviews() {
         if bounds.size != lastSize, bounds.width > 0, bounds.height > 0 {
