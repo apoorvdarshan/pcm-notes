@@ -16,9 +16,20 @@ struct SubjectScene: View {
         }
         .tint(subject.accent)
         .fullScreenCover(item: $selectedChapter) { chapter in
-            ChapterReaderView(subject: subject, chapter: chapter, onClose: askForRating)
-                .id(chapter.id)
+            ChapterReadingScene(subject: subject, initialChapter: chapter, onClose: askForRating)
         }
+        #if DEBUG && targetEnvironment(simulator)
+        .task {
+            let values = ProcessInfo.processInfo.environment
+            guard values["PCM_CAPTURE_SUBJECT"] == subject.slug,
+                  let rawPage = values["PCM_CAPTURE_PAGE"],
+                  let page = Int(rawPage),
+                  let chapter = subject.chapters.first else { return }
+            UserDefaults.standard.set(page, forKey: chapter.readingProgressKey(for: subject))
+            UserDefaults.standard.set(values["PCM_CAPTURE_LAYOUT"] ?? "continuous", forKey: "reader.ipad.layout")
+            selectedChapter = chapter
+        }
+        #endif
     }
 
     /// After a good reading session, request the App Store rating prompt when
@@ -31,6 +42,72 @@ struct SubjectScene: View {
             try? await Task.sleep(for: .milliseconds(700))
             requestReview()
         }
+    }
+}
+
+/// A single navigation hierarchy survives opening or closing a foldable display.
+/// Compact displays start in the reader; wide displays also expose the index.
+private struct ChapterReadingScene: View {
+    let subject: SubjectArea
+    let onClose: (Bool) -> Void
+
+    @State private var selection: Chapter?
+    @State private var goodSession = false
+    @State private var searchText = ""
+    @State private var columnVisibility = NavigationSplitViewVisibility.all
+    @State private var compactColumn = NavigationSplitViewColumn.detail
+    @Environment(\.dismiss) private var dismiss
+
+    init(subject: SubjectArea, initialChapter: Chapter, onClose: @escaping (Bool) -> Void) {
+        self.subject = subject
+        self.onClose = onClose
+        // A one-time seed; the scene owns chapter selection after it opens.
+        _selection = State(initialValue: initialChapter)
+    }
+
+    var body: some View {
+        NavigationSplitView(columnVisibility: $columnVisibility, preferredCompactColumn: $compactColumn) {
+            List(selection: $selection) {
+                ForEach(subject.chapters(matching: searchText)) { chapter in
+                    NavigationLink(value: chapter) {
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text("\(chapter.number). \(chapter.title)")
+                                .font(.body.weight(.semibold))
+                            Text("\(chapter.pageCount) pages")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.vertical, 4)
+                    }
+                    .accessibilityIdentifier("reader.chapter.\(subject.slug).\(chapter.number)")
+                }
+            }
+            .navigationTitle(subject.name)
+            .searchable(text: $searchText, prompt: "Find a chapter")
+            .navigationSplitViewColumnWidth(min: 260, ideal: 300, max: 380)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        } detail: {
+            NavigationStack {
+                if let chapter = selection {
+                    ChapterReaderView(
+                        subject: subject,
+                        chapter: chapter,
+                        onClose: { goodSession = goodSession || $0 },
+                        onDismiss: { dismiss() }
+                    )
+                    .id(chapter.id)
+                } else {
+                    ContentUnavailableView("Choose a chapter", systemImage: "book.closed")
+                }
+            }
+        }
+        .navigationSplitViewStyle(.balanced)
+        .tint(subject.accent)
+        .onDisappear { onClose(goodSession) }
     }
 }
 

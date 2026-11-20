@@ -29,6 +29,7 @@ struct ChapterReaderView: View {
     /// session (see `ReviewPrompt`). Kept local until then, so reading never
     /// redraws the chapter list behind the reader.
     let onClose: (_ goodSession: Bool) -> Void
+    let onDismiss: (() -> Void)?
 
     @State private var currentPage: Int
     @State private var renderedPageCount = 0
@@ -37,10 +38,11 @@ struct ChapterReaderView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
 
-    init(subject: SubjectArea, chapter: Chapter, onClose: @escaping (_ goodSession: Bool) -> Void = { _ in }) {
+    init(subject: SubjectArea, chapter: Chapter, onClose: @escaping (_ goodSession: Bool) -> Void = { _ in }, onDismiss: (() -> Void)? = nil) {
         self.subject = subject
         self.chapter = chapter
         self.onClose = onClose
+        self.onDismiss = onDismiss
 
         let storedPage = UserDefaults.standard.integer(
             forKey: chapter.readingProgressKey(for: subject)
@@ -62,7 +64,8 @@ struct ChapterReaderView: View {
                     pdfURL: pdfURL,
                     accent: subject.accent,
                     currentPage: $currentPage,
-                    pageCount: $renderedPageCount
+                    pageCount: $renderedPageCount,
+                    onDismiss: onDismiss
                 )
             } else {
                 missingPDF
@@ -85,6 +88,9 @@ struct ChapterReaderView: View {
         .onDisappear {
             onClose(goodSession)
         }
+        .onChange(of: goodSession) { _, isGoodSession in
+            if isGoodSession { onClose(true) }
+        }
     }
 
     private var missingPDF: some View {
@@ -98,7 +104,7 @@ struct ChapterReaderView: View {
                 Text("Rebuild and reinstall PCM Notes to embed this chapter's offline PDF.")
             } actions: {
                 Button("Return to chapters") {
-                    dismiss()
+                    if let onDismiss { onDismiss() } else { dismiss() }
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(subject.accent)
@@ -259,17 +265,17 @@ private struct FocusPDFReader: View {
     let accent: Color
     @Binding var currentPage: Int
     @Binding var pageCount: Int
+    let onDismiss: (() -> Void)?
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @AppStorage("reader.ipad.layout") private var storedLayout = PDFReadingLayout.continuous.rawValue
 
-    private var isPad: Bool {
-        UIDevice.current.userInterfaceIdiom == .pad
-    }
-
     private var readingLayout: PDFReadingLayout {
-        PDFReadingLayout(rawValue: storedLayout) ?? .continuous
+        // Keep the preference while folded; a compact reader always uses one page.
+        guard horizontalSizeClass == .regular else { return .continuous }
+        return PDFReadingLayout(rawValue: storedLayout) ?? .continuous
     }
 
     private var readerBackdrop: Color {
@@ -295,12 +301,14 @@ private struct FocusPDFReader: View {
                 pageCount: $pageCount
             )
             .background(readerBackdrop)
-            .ignoresSafeArea()
         }
-        .safeAreaInset(edge: .top) {
-            HStack(spacing: 12) {
+        .navigationTitle(title)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(chromeBackground, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
                 Button {
-                    dismiss()
+                    if let onDismiss { onDismiss() } else { dismiss() }
                 } label: {
                     Image(systemName: "xmark")
                         .font(.headline)
@@ -309,15 +317,9 @@ private struct FocusPDFReader: View {
                 .buttonStyle(.plain)
                 .background(chromeButtonBackground, in: Circle())
                 .accessibilityLabel("Close focus reader")
-
-                Text(title)
-                    .font(.headline)
-                    .lineLimit(1)
-                    .foregroundStyle(.primary)
-
-                Spacer()
-
-                if isPad {
+            }
+            ToolbarItemGroup(placement: .primaryAction) {
+                if horizontalSizeClass == .regular {
                     Menu {
                         Picker("Page layout", selection: $storedLayout) {
                             ForEach(PDFReadingLayout.allCases) { layout in
@@ -346,10 +348,6 @@ private struct FocusPDFReader: View {
                 .background(chromeButtonBackground, in: Circle())
                 .accessibilityLabel("Share chapter PDF")
             }
-            .foregroundStyle(.primary)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-            .background(chromeBackground)
         }
         .safeAreaInset(edge: .bottom) {
             ReaderControlBar(
@@ -362,7 +360,6 @@ private struct FocusPDFReader: View {
             .padding(.vertical, 8)
             .background(chromeBackground)
         }
-        .statusBarHidden()
     }
 }
 
@@ -377,7 +374,7 @@ private struct LocalPDFView: UIViewRepresentable {
     }
 
     func makeUIView(context: Context) -> PDFView {
-        let pdfView = PDFView()
+        let pdfView = ResizablePDFView()
         pdfView.backgroundColor = .clear
         pdfView.displayMode = .singlePageContinuous
         pdfView.displayDirection = .vertical
@@ -386,6 +383,9 @@ private struct LocalPDFView: UIViewRepresentable {
         pdfView.displayBox = .cropBox
         pdfView.autoScales = true
         configure(pdfView, for: readingLayout)
+        pdfView.onResize = { [weak coordinator = context.coordinator] view in
+            coordinator?.refit(view)
+        }
         context.coordinator.observe(pdfView)
         loadDocument(into: pdfView, coordinator: context.coordinator)
         return pdfView
@@ -401,19 +401,21 @@ private struct LocalPDFView: UIViewRepresentable {
 
         if context.coordinator.loadedLayout != readingLayout {
             context.coordinator.loadedLayout = readingLayout
+            // PDFKit may change its current page while applying the new layout.
+            // Schedule restoration before configuring it so those events are ignored.
+            context.coordinator.refit(pdfView)
             configure(pdfView, for: readingLayout)
-            refit(pdfView)
         }
 
         guard
+            !context.coordinator.isRefitting,
             let document = pdfView.document,
             let visiblePage = pdfView.currentPage
         else { return }
 
         let targetIndex = min(max(currentPage - 1, 0), max(document.pageCount - 1, 0))
-        if document.index(for: visiblePage) != targetIndex,
-           let targetPage = document.page(at: targetIndex) {
-            pdfView.go(to: targetPage)
+        if document.index(for: visiblePage) != targetIndex {
+            context.coordinator.position(pdfView, at: targetIndex)
         }
     }
 
@@ -427,6 +429,7 @@ private struct LocalPDFView: UIViewRepresentable {
 
         coordinator.loadedURL = url
         coordinator.loadedLayout = readingLayout
+        coordinator.refit(pdfView)
         pdfView.document = document
         pdfView.autoScales = true
         let documentPageCount = document.pageCount
@@ -434,10 +437,6 @@ private struct LocalPDFView: UIViewRepresentable {
         DispatchQueue.main.async {
             pageCount = documentPageCount
         }
-
-        let targetIndex = min(max(currentPage - 1, 0), max(document.pageCount - 1, 0))
-
-        refit(pdfView, targetIndex: targetIndex)
     }
 
     private func configure(_ pdfView: PDFView, for layout: PDFReadingLayout) {
@@ -453,33 +452,52 @@ private struct LocalPDFView: UIViewRepresentable {
         pdfView.autoScales = true
     }
 
-    private func refit(_ pdfView: PDFView, targetIndex: Int? = nil) {
-        let fallbackIndex = min(
-            max(currentPage - 1, 0),
-            max((pdfView.document?.pageCount ?? 1) - 1, 0)
-        )
-
-        DispatchQueue.main.async {
-            let fitScale = pdfView.scaleFactorForSizeToFit
-            if fitScale > 0 {
-                pdfView.scaleFactor = fitScale
-                pdfView.autoScales = true
-            }
-
-            if let targetPage = pdfView.document?.page(at: targetIndex ?? fallbackIndex) {
-                pdfView.go(to: targetPage)
-            }
-        }
-    }
-
     final class Coordinator: NSObject {
         var parent: LocalPDFView
         var loadedURL: URL?
         var loadedLayout: PDFReadingLayout?
         private var pageObserver: NSObjectProtocol?
+        private var refitGeneration = 0
+        private(set) var isRefitting = false
 
         init(parent: LocalPDFView) {
             self.parent = parent
+        }
+
+        func position(_ pdfView: PDFView, at index: Int) {
+            guard let page = pdfView.document?.page(at: index) else { return }
+            if parent.readingLayout == .spread {
+                // A tall spread viewport can show the cover and part of the first
+                // pair at once. Jump to the top edge, not PDFKit's centered page.
+                let bounds = page.bounds(for: pdfView.displayBox)
+                pdfView.go(to: PDFDestination(page: page, at: CGPoint(x: bounds.minX, y: bounds.maxY)))
+                if index == 0, let scrollView = (pdfView as? ResizablePDFView)?.documentScrollView {
+                    scrollView.setContentOffset(
+                        CGPoint(x: scrollView.contentOffset.x, y: -scrollView.adjustedContentInset.top),
+                        animated: false
+                    )
+                }
+            } else {
+                pdfView.go(to: page)
+            }
+        }
+
+        func refit(_ pdfView: PDFView) {
+            refitGeneration += 1
+            let generation = refitGeneration
+            isRefitting = true
+            DispatchQueue.main.async { [weak self, weak pdfView] in
+                guard let self, let pdfView, generation == refitGeneration else { return }
+                pdfView.layoutIfNeeded()
+                let scale = pdfView.scaleFactorForSizeToFit
+                if scale > 0 { pdfView.scaleFactor = scale }
+                pdfView.layoutIfNeeded()
+                if let document = pdfView.document, document.pageCount > 0 {
+                    let index = min(max(parent.currentPage - 1, 0), document.pageCount - 1)
+                    position(pdfView, at: index)
+                }
+                if generation == refitGeneration { isRefitting = false }
+            }
         }
 
         func observe(_ pdfView: PDFView) {
@@ -491,16 +509,29 @@ private struct LocalPDFView: UIViewRepresentable {
                 guard
                     let self,
                     let pdfView,
+                    !isRefitting,
                     let document = pdfView.document,
                     let page = pdfView.currentPage
                 else { return }
 
-                let visiblePage = document.index(for: page) + 1
                 let documentPageCount = document.pageCount
+                let generation = refitGeneration
 
-                DispatchQueue.main.async { [weak self] in
-                    guard let self else { return }
+                DispatchQueue.main.async { [weak self, weak pdfView] in
+                    guard let self, let pdfView, !isRefitting,
+                          generation == refitGeneration,
+                          pdfView.document === document, pdfView.currentPage === page else { return }
 
+                    var visiblePage = document.index(for: page) + 1
+                    if parent.readingLayout == .spread {
+                        // PDFKit's currentPage can be a lower spread when several
+                        // rows fit on screen. The reader position is the top row.
+                        let point = CGPoint(x: pdfView.bounds.width * 0.25,
+                                            y: pdfView.safeAreaInsets.top + 12)
+                        if let topPage = pdfView.page(for: point, nearest: true) {
+                            visiblePage = document.index(for: topPage) + 1
+                        }
+                    }
                     if parent.currentPage != visiblePage {
                         parent.currentPage = visiblePage
                     }
@@ -521,6 +552,30 @@ private struct LocalPDFView: UIViewRepresentable {
         deinit {
             stopObserving()
         }
+    }
+}
+
+/// PDFKit does not reliably refit a document when its container changes between
+/// the Duo's displays or when a sidebar is toggled. Keep the visible page while
+/// fitting the new proposal; normal scrolling and pinch zoom do not trigger this.
+private final class ResizablePDFView: PDFView {
+    private var lastSize = CGSize.zero
+    var onResize: ((PDFView) -> Void)?
+    var documentScrollView: UIScrollView? {
+        var current = documentView?.superview
+        while let view = current, view !== self {
+            if let scrollView = view as? UIScrollView { return scrollView }
+            current = view.superview
+        }
+        return nil
+    }
+
+    override func layoutSubviews() {
+        if bounds.size != lastSize, bounds.width > 0, bounds.height > 0 {
+            lastSize = bounds.size
+            onResize?(self)
+        }
+        super.layoutSubviews()
     }
 }
 

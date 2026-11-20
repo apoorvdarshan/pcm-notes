@@ -2,6 +2,13 @@ import AppKit
 import Foundation
 import PDFKit
 
+private struct CatalogChapter: Decodable {
+    let number: Int
+    let title: String
+    let folderName: String
+    let pageCount: Int
+}
+
 private struct ArchiveSubject {
     let slug: String
     let title: String
@@ -14,6 +21,7 @@ private let subjects = [
 ]
 
 private enum GeneratorError: LocalizedError {
+    case catalogMismatch(String)
     case invalidArguments
     case missingSource(URL)
     case unreadableImage(URL)
@@ -22,6 +30,8 @@ private enum GeneratorError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
+        case .catalogMismatch(let message):
+            "Chapter catalog does not match the source archive: \(message)"
         case .invalidArguments:
             "Usage: GenerateOfflineNotes <archive-root> <output-root>"
         case .missingSource(let url):
@@ -48,6 +58,12 @@ private enum OfflineNotesGenerator {
         let outputRoot = URL(fileURLWithPath: CommandLine.arguments[2], isDirectory: true)
         try fileManager.createDirectory(at: outputRoot, withIntermediateDirectories: true)
 
+        let catalogData = try Data(contentsOf: archiveRoot.appendingPathComponent("catalog.json"))
+        let catalog = try JSONDecoder().decode([String: [CatalogChapter]].self, from: catalogData)
+        guard Set(catalog.keys) == Set(subjects.map(\.slug)) else {
+            throw GeneratorError.catalogMismatch("expected Physics, Chemistry and Mathematics")
+        }
+
         var manifestSubjects: [[String: Any]] = []
         var totalChapters = 0
         var totalPages = 0
@@ -69,6 +85,12 @@ private enum OfflineNotesGenerator {
             .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
             .sorted { chapterNumber(for: $0) < chapterNumber(for: $1) }
 
+            let entries = catalog[subject.slug] ?? []
+            guard entries.count == chapterFolders.count,
+                  entries.map(\.number) == Array(1...max(entries.count, 1)),
+                  entries.map(\.folderName) == chapterFolders.map(\.lastPathComponent) else {
+                throw GeneratorError.catalogMismatch(subject.slug)
+            }
             var subjectPages = 0
 
             for chapterFolder in chapterFolders {
@@ -81,7 +103,12 @@ private enum OfflineNotesGenerator {
                 .filter { ["jpg", "jpeg"].contains($0.pathExtension.lowercased()) }
                 .sorted { $0.lastPathComponent < $1.lastPathComponent }
 
-                guard !imageURLs.isEmpty else { continue }
+                let entry = entries[chapterNumber - 1]
+                let expectedPages = (1...max(entry.pageCount, 1)).map { String(format: "%04d.jpg", $0) }
+                guard entry.pageCount > 0, !entry.title.isEmpty,
+                      imageURLs.map(\.lastPathComponent) == expectedPages else {
+                    throw GeneratorError.catalogMismatch("\(subject.slug)/\(entry.folderName)")
+                }
 
                 let outputURL = subjectOutput.appendingPathComponent(
                     String(format: "%02d.pdf", chapterNumber)
@@ -90,7 +117,7 @@ private enum OfflineNotesGenerator {
                 if needsRegeneration(outputURL: outputURL, sourceImages: imageURLs) {
                     try generatePDF(
                         from: imageURLs,
-                        title: chapterTitle(for: chapterFolder),
+                        title: entry.title,
                         subject: subject.title,
                         outputURL: outputURL
                     )
@@ -108,6 +135,8 @@ private enum OfflineNotesGenerator {
                 "pages": subjectPages,
             ])
         }
+
+        try catalogData.write(to: outputRoot.appendingPathComponent("catalog.json"), options: .atomic)
 
         let manifest: [String: Any] = [
             "formatVersion": 1,

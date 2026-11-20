@@ -159,8 +159,8 @@ either the committed files or their RGB copies.
 
 `store/creative/ios/header/` takes one PNG of exactly 3840×1646 and
 `store/creative/ios/search-results/` one PNG or JPEG in 3:2 (1920×1280 to
-3840×2560), neither storing alpha. PCM Notes has none yet (each folder only holds a
-README), so leave `IOS_UPLOAD_CREATIVE_ASSETS` off until one is added.
+3840×2560), neither storing alpha. Both folders contain prepared RGB PNGs.
+They are not uploaded unless `IOS_UPLOAD_CREATIVE_ASSETS` is enabled.
 
 ## Export compliance
 

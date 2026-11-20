@@ -46,6 +46,7 @@ jobs:
           # The app build turns these note images into the bundled chapter PDFs.
           sparse-checkout: |
             /ios/
+            /catalog.json
             /physics/
             /chemistry/
             /mathematics/

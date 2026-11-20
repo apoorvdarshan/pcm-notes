@@ -258,6 +258,7 @@
 			inputPaths = (
 				"$(PROJECT_DIR)/BuildTools/BundleOfflineNotes.sh",
 				"$(PROJECT_DIR)/BuildTools/GenerateOfflineNotes.swift",
+				"$(PROJECT_DIR)/../../catalog.json",
 				"$(PROJECT_DIR)/../../physics",
 				"$(PROJECT_DIR)/../../chemistry",
 				"$(PROJECT_DIR)/../../mathematics",

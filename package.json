@@ -2,7 +2,9 @@
   "scripts": {
     "watermark": "node watermark.js",
     "deploy": "npm run build && npx wrangler deploy",
-    "build": "node static-build.mjs"
+    "build": "node static-build.mjs",
+    "check:catalog": "node scripts/check-catalog.mjs",
+    "test:catalog": "node --test scripts/test-catalog.mjs"
   },
   "devDependencies": {
     "sharp": "^0.35.5",

@@ -50,7 +50,7 @@ gate_policy = "when-uploading"
 [ios.build]
 developer_dir = "/Applications/Xcode_27.app/Contents/Developer"
 # The app bundles a PDF per chapter generated from the note images.
-checkout = ["/ios/", "/physics/", "/chemistry/", "/mathematics/"]
+checkout = ["/catalog.json", "/ios/", "/physics/", "/chemistry/", "/mathematics/"]
 package_cache_files = ["ios/**/Package.resolved"]
 # Every tracked note page is in the archive (OfflineNotes/manifest.json against git).
 post_archive = ["scripts/ci/check_offline_notes.sh"]

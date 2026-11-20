@@ -8,7 +8,7 @@ final class iPadReaderUITests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = false
         guard UIDevice.current.userInterfaceIdiom == .pad else {
-            throw XCTSkip("Two-page reading is intentionally limited to iPad.")
+            throw XCTSkip("This suite runs on the wide iPad display in CI.")
         }
     }
 
@@ -41,7 +41,8 @@ final class iPadReaderUITests: XCTestCase {
         // Page 1 stands alone like a cover, then pages pair up.
         let slider = app.sliders["reader.pageSlider"]
         let next = app.buttons["Next page"]
-        XCTAssertTrue(slider.waitForValue("Page 1 of 9"))
+        XCTAssertTrue(slider.waitForValue("Page 1 of 9"),
+                      "Switching layout must keep the reader on the cover, got \(String(describing: slider.value))")
         next.tap()
         XCTAssertTrue(slider.waitForValue("Pages 2 through 3 of 9"))
         XCTAssertTrue(app.staticTexts["2–3 / 9"].exists)
@@ -53,5 +54,23 @@ final class iPadReaderUITests: XCTestCase {
 
         app.openChapter("physics", 1, expecting: "Pages 4 through 5 of 9")
         XCTAssertTrue(layoutMenu.waitForValue("Two-page spread"))
+    }
+
+    /// The sidebar opens another bundled chapter without leaving the reader.
+    @MainActor
+    func testChapterSidebarKeepsIndependentReadingProgress() throws {
+        let app = XCUIApplication.pcmNotes()
+        app.launch()
+        app.openChapter("physics", 1, expecting: "Page 1 of 9")
+        app.buttons["Next page"].tap()
+        XCTAssertTrue(app.sliders["reader.pageSlider"].waitForValue("Page 2 of 9"))
+
+        let second = app.buttons["reader.chapter.physics.2"]
+        XCTAssertTrue(second.waitForExistence(timeout: stepTimeout))
+        XCTAssertTrue(second.isHittable, "Wide displays should show the chapter sidebar beside the PDF")
+        second.tap()
+        XCTAssertTrue(app.sliders["reader.pageSlider"].waitForValue("Page 1 of 14"))
+        app.buttons["Close focus reader"].tap()
+        app.openChapter("physics", 1, expecting: "Page 2 of 9")
     }
 }

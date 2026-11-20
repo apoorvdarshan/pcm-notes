@@ -65,106 +65,20 @@ function goBack() {
 }
 
 
-// Chapter Data - This represents the actual folder structure
-const chapterData = {
-  physics: [
-    "1.Vectors",
-    "2.Unit, Dimension, Measurement, Error",
-    "3.Kinematics",
-    "4.Newton's Laws of Motion",
-    "5.Work, Power & Energy",
-    "6.Conservation of Momentum",
-    "7.Rotational Motion",
-    "8.Gravitation",
-    "9.Fluids & Elasticity",
-    "10.Heat & Thermodynamics",
-    "11.Simple Harmonic Motion",
-    "12.Waves & Sound",
-    "13.Electrostatics & Current Electricity",
-    "14.Magnetics",
-    "15.Permanent Magnet",
-    "16.Electromagnetic Induction",
-    "17.Alternating Current",
-    "18.Electromagnetic Waves",
-    "19.Optics",
-    "20.Modern Physics",
-    "21.Communication System",
-    "22.Semiconductor",
-    "23.EXPERIMENTAL SKILLS IN PHYSICS",
-  ],
-  chemistry: [
-    "1.Some Basic Concepts of Chemistry",
-    "2.Structure of Atom",
-    "3.Classification of Elements & Periodicity in Properties",
-    "4.Chemical Bonding & Molecular Structure",
-    "5.Gaseous State",
-    "6.Thermodynamics",
-    "7.Chemical Kinetics & Nuclear Chemistry",
-    "8.Hydrogen",
-    "9.Chemical Equilibrium",
-    "10.Ionic Equilibrium",
-    "11.The s-BLOCK elements",
-    "12.The p-BLOCK elements",
-    "13.GOC",
-    "14.Isomerism",
-    "15.Hydrocarbons",
-    "16.Environmental Chemistry",
-    "17.Electrophilic Aromatic Substitution",
-    "18.Alkyl & Aryl Halides",
-    "19.Alcohol, Phenol & Ether",
-    "20.Aldehydes & Ketones",
-    "21.Carboxylic Acids & Derivatives",
-    "22.Amines",
-    "23.Solid State",
-    "24.Solutions",
-    "25.Surface Chemistry",
-    "26.General Principles and Processes of Isolation of Elements",
-    "27.Electrochemistry",
-    "28.The d- and f- BLOCK Elements",
-    "29.Coordination Compounds",
-    "30.QUALITATIVE SALT ANALYSIS",
-    "31.Polymers",
-    "32.Biomolecules",
-    "33.Chemistry in Everyday Life",
-    "34.IUPAC Nomenclature",
-    "35.PRACTICAL ORGANIC CHEMISTRY",
-    "36.Purification and Characteristics of Organic Compounds",
-    "37.CONFORMERS",
-  ],
-  mathematics: [
-    "1.Set, Relation & Function",
-    "2.Linear Inequalities & Linear Programming",
-    "3.Logarithm",
-    "4.Trigonometric Ratios & Identities",
-    "5.Basic Calculus",
-    "6.Quadratic Equations & Expressions",
-    "7.Mathematical Reasoning",
-    "8.Sequence & Progression",
-    "9.Straight Lines",
-    "10.Circle",
-    "11.Parabola & Conic Section",
-    "12.Mathematical Induction",
-    "13.Ellipse",
-    "14.Hyperbola",
-    "15.Complex Number",
-    "16.Solution of Triangle",
-    "17.Trigonometric Equations",
-    "18.Permutation & Combinations",
-    "19.Binomial Theorem",
-    "20.Probability",
-    "21.Statistics",
-    "22.Function-II",
-    "23.Inverse Trigonometric Functions",
-    "24.Limit, Continuity & Differentiability (Differentiation)",
-    "25.Application of Derivatives",
-    "26.Indefinite Integration",
-    "27.Definite Integration",
-    "28.Area Under Curve (Quadrature)",
-    "29.Differential Equations",
-    "30.Matrices & Determinants",
-    "31.Vectors & 3D",
-  ],
-};
+// One catalog is shared with the native app and verified against the source pages.
+let chapterCatalog = {};
+let chapterData = {};
+
+async function loadCatalog() {
+  const response = await fetch("/catalog.json");
+  if (!response.ok) throw new Error("The chapter catalog could not be loaded.");
+  chapterCatalog = await response.json();
+  chapterData = Object.fromEntries(
+    Object.entries(chapterCatalog).map(([subject, chapters]) => [
+      subject, chapters.map((chapter) => chapter.folderName),
+    ]),
+  );
+}
 
 // Load chapters for subject pages
 function loadChapters(subject) {
@@ -321,111 +235,8 @@ function initializeReaderProgress() {
   window.addEventListener("resize", update);
 }
 
-// Get estimated image count based on the folder structure
 function getImageCount(subject, chapter) {
-  // This is a simplified version - in reality, you'd scan the directory
-  // Based on the project structure, most chapters have various numbers of images
-  const chapterImageCounts = {
-    physics: {
-      "1.Vectors": 9,
-      "2.Unit, Dimension, Measurement, Error": 14,
-      "3.Kinematics": 19,
-      "4.Newton's Laws of Motion": 15,
-      "5.Work, Power & Energy": 19,
-      "6.Conservation of Momentum": 25,
-      "7.Rotational Motion": 36,
-      "8.Gravitation": 16,
-      "9.Fluids & Elasticity": 32,
-      "10.Heat & Thermodynamics": 45,
-      "11.Simple Harmonic Motion": 14,
-      "12.Waves & Sound": 18,
-      "13.Electrostatics & Current Electricity": 92,
-      "14.Magnetics": 30,
-      "15.Permanent Magnet": 9,
-      "16.Electromagnetic Induction": 13,
-      "17.Alternating Current": 14,
-      "18.Electromagnetic Waves": 6,
-      "19.Optics": 45,
-      "20.Modern Physics": 27,
-      "21.Communication System": 9,
-      "22.Semiconductor": 13,
-      "23.EXPERIMENTAL SKILLS IN PHYSICS": 19,
-    },
-    chemistry: {
-      "1.Some Basic Concepts of Chemistry": 81,
-      "2.Structure of Atom": 54,
-      "3.Classification of Elements & Periodicity in Properties": 39,
-      "4.Chemical Bonding & Molecular Structure": 86,
-      "5.Gaseous State": 42,
-      "6.Thermodynamics": 54,
-      "7.Chemical Kinetics & Nuclear Chemistry": 24,
-      "8.Hydrogen": 9,
-      "9.Chemical Equilibrium": 20,
-      "10.Ionic Equilibrium": 46,
-      "11.The s-BLOCK elements": 24,
-      "12.The p-BLOCK elements": 54,
-      "13.GOC": 26,
-      "14.Isomerism": 26,
-      "15.Hydrocarbons": 41,
-      "16.Environmental Chemistry": 17,
-      "17.Electrophilic Aromatic Substitution": 3,
-      "18.Alkyl & Aryl Halides": 14,
-      "19.Alcohol, Phenol & Ether": 27,
-      "20.Aldehydes & Ketones": 27,
-      "21.Carboxylic Acids & Derivatives": 13,
-      "22.Amines": 16,
-      "23.Solid State": 44,
-      "24.Solutions": 17,
-      "25.Surface Chemistry": 19,
-      "26.General Principles and Processes of Isolation of Elements": 14,
-      "27.Electrochemistry": 21,
-      "28.The d- and f- BLOCK Elements": 21,
-      "29.Coordination Compounds": 19,
-      "30.QUALITATIVE SALT ANALYSIS": 24,
-      "31.Polymers": 10,
-      "32.Biomolecules": 25,
-      "33.Chemistry in Everyday Life": 7,
-      "34.IUPAC Nomenclature": 17,
-      "35.PRACTICAL ORGANIC CHEMISTRY": 4,
-      "36.Purification and Characteristics of Organic Compounds": 7,
-      "37.CONFORMERS": 1,
-    },
-    mathematics: {
-      "1.Set, Relation & Function": 58,
-      "2.Linear Inequalities & Linear Programming": 1,
-      "3.Logarithm": 8,
-      "4.Trigonometric Ratios & Identities": 11,
-      "5.Basic Calculus": 38,
-      "6.Quadratic Equations & Expressions": 15,
-      "7.Mathematical Reasoning": 3,
-      "8.Sequence & Progression": 28,
-      "9.Straight Lines": 24,
-      "10.Circle": 20,
-      "11.Parabola & Conic Section": 16,
-      "12.Mathematical Induction": 2,
-      "13.Ellipse": 15,
-      "14.Hyperbola": 9,
-      "15.Complex Number": 16,
-      "16.Solution of Triangle": 13,
-      "17.Trigonometric Equations": 12,
-      "18.Permutation & Combinations": 18,
-      "19.Binomial Theorem": 14,
-      "20.Probability": 12,
-      "21.Statistics": 7,
-      "22.Function-II": 50,
-      "23.Inverse Trigonometric Functions": 22,
-      "24.Limit, Continuity & Differentiability (Differentiation)": 65,
-      "25.Application of Derivatives": 49,
-      "26.Indefinite Integration": 19,
-      "27.Definite Integration": 16,
-      "28.Area Under Curve (Quadrature)": 6,
-      "29.Differential Equations": 15,
-      "30.Matrices & Determinants": 29,
-      "31.Vectors & 3D": 30,
-    },
-  };
-
-  return chapterImageCounts[subject]?.[chapter] || 0;
+  return chapterCatalog[subject]?.find((entry) => entry.folderName === chapter)?.pageCount || 0;
 }
 
 // Navigation helper
@@ -560,7 +371,7 @@ function loadImageForPDF(src) {
 }
 
 // Initialize page based on current location
-function initializePage() {
+async function initializePage() {
   initializeTheme();
 
   document.querySelectorAll("[data-current-year]").forEach((element) => {
@@ -569,6 +380,19 @@ function initializePage() {
 
   const path = window.location.pathname.replace(/\/+$/, "");
   const page = path.substring(path.lastIndexOf("/") + 1).replace(/\.html$/i, "");
+
+  if (["physics", "chemistry", "mathematics", "gallery"].includes(page)) {
+    try {
+      await loadCatalog();
+    } catch (error) {
+      const container = document.getElementById("chapter-list") || document.getElementById("image-gallery");
+      if (container) container.textContent = "Notes could not be loaded. Please refresh to try again.";
+      const download = document.getElementById("download-pdf");
+      if (download) download.disabled = true;
+      console.error(error);
+      return;
+    }
+  }
 
   if (page === "physics") {
     loadChapters("physics");
