@@ -14,8 +14,11 @@ The App Store's What's New text is kept separately, per language, in
 
 App Store version 1.1.1.
 
-- Bug fixes and improvements
-- RevenueCat 5.96
+- iPhone Duo support: one page on the outer screen, the chapter sidebar and two
+  pages side by side on the inner screen
+- iPad keeps the chapter sidebar visible and shows two pages side by side
+- The reader keeps your page while it resizes or switches layouts
+- RevenueCat 5.99.2
 
 ## v1.1.0
 
