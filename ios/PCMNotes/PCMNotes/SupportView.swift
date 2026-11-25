@@ -6,7 +6,7 @@ struct SupportView: View {
         string: "mailto:ad13dtu@gmail.com?subject=PCM%20Notes%20Support"
     )!
     private let xProfile = URL(string: "https://x.com/apoorvdarshan")!
-    private let instagramProfile = URL(string: "https://www.instagram.com/apoorvcodes/")!
+    private let instagramProfile = URL(string: "https://www.instagram.com/apoorvxi/")!
     private let appStoreListing = URL(string: "https://apps.apple.com/app/id6792598227")!
     private let appStoreReview = URL(string: "https://apps.apple.com/app/id6792598227?action=write-review")!
     private let sourceRepository = URL(string: "https://github.com/apoorvdarshan/pcm-notes")!
@@ -153,7 +153,7 @@ struct SupportView: View {
 
                 NotebookActionRow(
                     title: "Instagram",
-                    detail: "@apoorvcodes",
+                    detail: "@apoorvxi",
                     symbol: "camera",
                     color: AppPalette.about,
                     destination: instagramProfile

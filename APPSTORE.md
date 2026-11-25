@@ -175,7 +175,7 @@ equivalent regional ratings automatically.
     About tab. The same documents are available at the URLs above.
     Support email: ad13dtu@gmail.com
     X: @apoorvdarshan
-    Instagram: @apoorvcodes
+    Instagram: @apoorvxi
 
 ## Final Submission Checklist
 

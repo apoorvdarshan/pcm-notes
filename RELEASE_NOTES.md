@@ -30,7 +30,7 @@ App Store version 1.1.0.
 - Rate and Share in the Support tab; Apple's rating prompt can also appear after
   a good reading session (after 3 days of use, at most once per version and every
   122 days)
-- Instagram @apoorvcodes next to X, and a single support email
+- Instagram @apoorvxi next to X, and a single support email
 - The website moved to pcm-notes.apoorvdarshan.com
 - RevenueCat 5.95
 

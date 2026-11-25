@@ -244,7 +244,7 @@ final class PCMNotesUITests: XCTestCase {
         XCTAssertTrue(share.waitForExistence(timeout: stepTimeout))
         XCTAssertTrue(app.staticTexts["ad13dtu@gmail.com"].exists)
         XCTAssertTrue(app.staticTexts["@apoorvdarshan"].exists)
-        XCTAssertTrue(app.staticTexts["@apoorvcodes"].exists)
+        XCTAssertTrue(app.staticTexts["@apoorvxi"].exists)
         XCTAssertTrue(app.descendants(matching: .any)["tip.disclosure"].waitForExistence(timeout: stepTimeout))
 
         let prices = ["small": "Small Tip, ₹49", "medium": "Chai Tip, ₹99",
