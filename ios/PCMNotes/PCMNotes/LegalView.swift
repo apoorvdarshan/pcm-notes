@@ -76,7 +76,7 @@ enum LegalDocument: String, Identifiable {
                 ),
                 LegalSectionContent(
                     title: "Questions about privacy",
-                    body: "Email ad13dtu@gmail.com. You can also contact @apoorvdarshan on X or @apoorvcodes on Instagram."
+                    body: "Email ad13dtu@gmail.com. You can also contact @apoorvdarshan on X or @apoorvxi on Instagram."
                 )
             ]
         case .terms:
@@ -115,7 +115,7 @@ enum LegalDocument: String, Identifiable {
                 ),
                 LegalSectionContent(
                     title: "Contact",
-                    body: "Questions about these terms can be sent to ad13dtu@gmail.com, or to @apoorvdarshan on X or @apoorvcodes on Instagram."
+                    body: "Questions about these terms can be sent to ad13dtu@gmail.com, or to @apoorvdarshan on X or @apoorvxi on Instagram."
                 )
             ]
         }

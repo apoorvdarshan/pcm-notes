@@ -143,7 +143,7 @@ upload twice.
 - **Terms of Use:** [pcm-notes.apoorvdarshan.com/terms.html](https://pcm-notes.apoorvdarshan.com/terms.html)
 - **Email support:** [ad13dtu@gmail.com](mailto:ad13dtu@gmail.com?subject=PCM%20Notes%20Support)
 - **X:** [@apoorvdarshan](https://x.com/apoorvdarshan)
-- **Instagram:** [@apoorvcodes](https://www.instagram.com/apoorvcodes/)
+- **Instagram:** [@apoorvxi](https://www.instagram.com/apoorvxi/)
 
 Ko-fi support and product links are available from the website. The iOS app separately offers four optional, repeatable tips processed by Apple through StoreKit and recorded by RevenueCat; tipping never unlocks notes or reader features.
 
